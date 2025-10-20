@@ -3,7 +3,7 @@ from supabase import create_client
 from datetime import date, datetime, timedelta
 import ephem  # pip install ephem
 
-st.title("📿 Vedic Date of Birth Finder (Full Panchang)")
+st.title("📿 Vedic Date of Birth Finder (Full Panchang with Adhik Maas)")
 
 # --- Supabase Setup using Streamlit Secrets ---
 try:
@@ -27,7 +27,7 @@ def get_tithi(date_obj):
     date_str = date_obj.strftime("%Y/%m/%d")
     moon = ephem.Moon(date_str)
     sun = ephem.Sun(date_str)
-    moon_phase_angle = (moon.elong * 180 / 3.14159265) % 360  # degrees
+    moon_phase_angle = (moon.elong * 180 / 3.14159265) % 360
     tithi_num = int(moon_phase_angle / 12) + 1  # 1-30
     return tithi_num
 
@@ -49,7 +49,7 @@ def get_nakshatra(date_obj):
     """Calculate Nakshatra"""
     date_str = date_obj.strftime("%Y/%m/%d")
     moon = ephem.Moon(date_str)
-    nakshatra_num = int((moon.ra * 180 / 3.14159265) / (360/27))  # 27 Nakshatras
+    nakshatra_num = int((moon.ra * 180 / 3.14159265) / (360/27))
     nakshatras = ["Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha",
                   "Ardra", "Punarvasu", "Pushya", "Ashlesha", "Magha",
                   "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra",
@@ -62,7 +62,7 @@ def get_masa(date_obj):
     """Estimate lunar month based on Sun’s longitude"""
     date_str = date_obj.strftime("%Y/%m/%d")
     sun = ephem.Sun(date_str)
-    sun_longitude = sun.ra * 180 / 3.14159265  # in degrees
+    sun_longitude = sun.ra * 180 / 3.14159265
     lunar_months = ["Chaitra", "Vaishakha", "Jyeshtha", "Ashadha", "Shravana",
                     "Bhadrapada", "Ashwin", "Kartika", "Margashirsha", "Pausha",
                     "Magha", "Phalguna"]
@@ -70,12 +70,13 @@ def get_masa(date_obj):
     return lunar_months[month_index]
 
 def next_year_same_tithi(dob):
-    """Find next Gregorian date with same Tithi next year"""
+    """Find next Gregorian date with same Tithi next year considering Adhik Maas"""
     tithi_birth = get_tithi(dob)
+    masa_birth = get_masa(dob)
     next_year = dob.year + 1
     check_date = datetime(next_year, 1, 1)
     while True:
-        if get_tithi(check_date) == tithi_birth:
+        if get_tithi(check_date) == tithi_birth and get_masa(check_date) == masa_birth:
             return check_date.date()
         check_date += timedelta(days=1)
 
@@ -97,12 +98,12 @@ if st.button("Submit"):
                    f"- Nakshatra: {nakshatra}\n"
                    f"- Masa: {masa}\n"
                    f"- Weekday: {weekday}\n\n"
-                   f"📅 Next year's Gregorian date with same Tithi: {next_year_dob}")
+                   f"📅 Next year's Gregorian date with same Tithi & Masa: {next_year_dob}")
 
         # --- Save to Supabase ---
         if 'supabase' in locals():
             try:
-                supabase.table("users").insert({  # <-- table name updated here
+                supabase.table("users").insert({
                     "name": name,
                     "dob": dob.isoformat(),
                     "vedic_details": f"{vedic_tithi}, {nakshatra}, {masa}, {weekday}"
