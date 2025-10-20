@@ -1,17 +1,10 @@
 import streamlit as st
-from supabase import create_client
 from datetime import date, datetime, timedelta
-import ephem  # pip install ephem
+import swisseph as swe
+from drik_panchanga import Panchanga
+import ephem
 
 st.title("📿 Vedic Date of Birth Finder (Full Panchang with Adhik Maas)")
-
-# --- Supabase Setup using Streamlit Secrets ---
-try:
-    SUPABASE_URL = st.secrets["supabase"]["url"]
-    SUPABASE_KEY = st.secrets["supabase"]["key"]
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-except KeyError:
-    st.error("❌ Supabase URL or Key not found in Streamlit Secrets!")
 
 # --- Streamlit Input ---
 name = st.text_input("Enter your Name")
