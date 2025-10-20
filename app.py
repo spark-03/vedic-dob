@@ -102,7 +102,7 @@ if st.button("Submit"):
         # --- Save to Supabase ---
         if 'supabase' in locals():
             try:
-                supabase.table("vedic_dobs").insert({
+                supabase.table("users").insert({  # <-- table name updated here
                     "name": name,
                     "dob": dob.isoformat(),
                     "vedic_details": f"{vedic_tithi}, {nakshatra}, {masa}, {weekday}"
