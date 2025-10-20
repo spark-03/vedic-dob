@@ -2,7 +2,7 @@ import streamlit as st
 from supabase import create_client
 from datetime import date, datetime, timedelta
 import ephem
-import panchanga  # Your local panchanga.py
+import panchanga
 
 st.title("📿 Vedic Date of Birth Finder")
 
@@ -14,26 +14,28 @@ try:
 except KeyError:
     st.error("❌ Supabase credentials missing in Streamlit Secrets!")
 
-# --- Default location for Panchanga (you can change this) ---
-place = {
-    "latitude": 17.3850,   # Hyderabad, India
-    "longitude": 78.4867,
-    "timezone": 5.5
-}
+# --- Create a class for place ---
+class Place:
+    def __init__(self, latitude, longitude, timezone):
+        self.latitude = latitude
+        self.longitude = longitude
+        self.timezone = timezone
 
-# --- Helper function to convert to Julian Day ---
+# --- Default place (you can change or make it user-selectable) ---
+place = Place(latitude=17.3850, longitude=78.4867, timezone=5.5)  # Hyderabad, India
+
+# --- Convert to Julian Day ---
 def to_julian_day(date_obj):
     obs = ephem.Observer()
     obs.date = date_obj.strftime("%Y/%m/%d")
     return ephem.julian_date(obs.date)
 
-# --- Function to find next year's Vedic DOB ---
+# --- Next Year Vedic DOB Calculation ---
 def next_year_same_tithi(dob):
     jd_birth = to_julian_day(dob)
     tithi_birth = panchanga.tithi(jd_birth, place)
     masa_birth = panchanga.masa(jd_birth, place)
 
-    # start checking from next year's same month/day
     try:
         check_date = datetime(dob.year + 1, dob.month, dob.day)
     except ValueError:
@@ -50,7 +52,7 @@ def next_year_same_tithi(dob):
         check_date += timedelta(days=1)
     return end_date.date()
 
-# --- Streamlit Inputs ---
+# --- User Inputs ---
 name = st.text_input("Enter your Name")
 dob = st.date_input(
     "Enter your Date of Birth",
