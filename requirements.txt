@@ -4,4 +4,3 @@ requests
 pytz
 ephem
 pyswisseph
-git+https://github.com/webresh/drik-panchanga.git
