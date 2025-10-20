@@ -1,5 +1,4 @@
 streamlit
 supabase
-hindu-calendar==0.1.2
 hindu-date
 pytz
