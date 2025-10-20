@@ -1,5 +1,5 @@
-from datetime import date
 import streamlit as st
+from datetime import date
 from supabase import create_client
 import panchanga
 
@@ -9,11 +9,17 @@ st.title("🪔 Vedic Date of Birth Finder")
 st.write("Discover your Vedic (lunar) birth details using ancient Panchanga calculations.")
 
 # --- Supabase Setup ---
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    SUPABASE_URL = st.secrets["supabase"]["url"]
+    SUPABASE_KEY = st.secrets["supabase"]["key"]
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    st.write("✅ Connected to Supabase successfully!")
+except KeyError:
+    st.error("⚠️ Supabase keys missing! Please add them in Streamlit secrets.")
+    st.stop()
 
-# --- Date Input ---
+# --- Input Section ---
+name = st.text_input("Enter your name")
 dob = st.date_input(
     "Select your Date of Birth",
     min_value=date(1900, 1, 1),
@@ -21,28 +27,30 @@ dob = st.date_input(
     help="Choose your date of birth to calculate the corresponding Vedic (lunar) date."
 )
 
-# --- Button Action ---
+# --- Action Button ---
 if st.button("🔍 Find My Vedic DOB"):
-    try:
-        # Calculate Tithi (Vedic lunar day)
-        vedic_tithi = panchanga.tithi(dob)
-
-        # Display result
-        st.success(f"🪔 Your Vedic Tithi: **{vedic_tithi}**")
-
-        # --- Save to Supabase ---
+    if not name:
+        st.warning("Please enter your name before continuing.")
+    else:
         try:
-            data = {
-                "dob": str(dob),
-                "vedic_details": vedic_tithi
-            }
-            supabase.table("users").insert(data).execute()
-            st.info("✅ Your details have been saved successfully in the database.")
-        except Exception as e:
-            st.error(f"❌ Could not save to Supabase: {e}")
+            # Calculate Vedic Tithi (basic lunar logic)
+            vedic_tithi = panchanga.tithi(dob)
+            st.success(f"🪔 Your Vedic Tithi is: **{vedic_tithi}**")
 
-    except Exception as e:
-        st.error(f"⚠️ Error calculating Vedic DOB: {e}")
+            # Save details to Supabase
+            try:
+                data = {
+                    "name": name,
+                    "dob": str(dob),
+                    "vedic_details": vedic_tithi
+                }
+                supabase.table("users").insert(data).execute()
+                st.info("✅ Your details have been saved successfully in the database.")
+            except Exception as e:
+                st.error(f"❌ Could not save to Supabase: {e}")
+
+        except Exception as e:
+            st.error(f"⚠️ Error calculating Vedic DOB: {e}")
 
 # --- Footer ---
 st.markdown("---")
