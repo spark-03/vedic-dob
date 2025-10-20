@@ -74,7 +74,6 @@ def get_rashi(date_obj):
 
 def next_year_precise_vedic_date(dob):
     """Find next Gregorian date where Tithi, Masa, Nakshatra, and Rashi all match"""
-    # Original Vedic details
     tithi_birth = get_tithi(dob)
     masa_birth = get_masa(dob)
     nakshatra_birth = get_nakshatra(dob)
@@ -85,7 +84,6 @@ def next_year_precise_vedic_date(dob):
     except ValueError:
         start_date = datetime(dob.year + 1, 1, 1)
 
-    # Search next ~400 days to find exact match
     for i in range(400):
         d = start_date + timedelta(days=i)
         if (get_tithi(d) == tithi_birth and
@@ -94,8 +92,7 @@ def next_year_precise_vedic_date(dob):
             get_rashi(d) == rashi_birth):
             return d.date()
 
-    # Fallback: return same solar birthday if no match found
-    return start_date.date()
+    return start_date.date()  # fallback
 
 # --- Button Action ---
 if st.button("Submit"):
@@ -108,7 +105,15 @@ if st.button("Submit"):
         masa = get_masa(dob)
         rashi = get_rashi(dob)
         weekday = dob.strftime("%A")
-        next_year_dob = next_year_precise_vedic_date(dob)
+
+        # Solar birthday next year
+        try:
+            solar_birthday_next_year = datetime(dob.year + 1, dob.month, dob.day).date()
+        except ValueError:
+            solar_birthday_next_year = datetime(dob.year + 1, 1, 1).date()
+
+        # Next exact Vedic DOB
+        next_vedic_dob = next_year_precise_vedic_date(dob)
 
         st.success(f"Hello {name}!\n\n"
                    f"📿 Vedic DOB Details:\n"
@@ -117,7 +122,8 @@ if st.button("Submit"):
                    f"- Masa: {masa}\n"
                    f"- Rashi: {rashi}\n"
                    f"- Weekday: {weekday}\n\n"
-                   f"📅 Next year's Gregorian date (exact same Vedic DOB): {next_year_dob}")
+                   f"📅 Solar Birthday next year: {solar_birthday_next_year}\n"
+                   f"📅 Next year's exact Vedic DOB: {next_vedic_dob}")
 
         # --- Save to Supabase ---
         if 'supabase' in locals():
@@ -125,7 +131,9 @@ if st.button("Submit"):
                 supabase.table("users").insert({
                     "name": name,
                     "dob": dob.isoformat(),
-                    "vedic_details": f"{vedic_tithi}, {nakshatra}, {masa}, {rashi}, {weekday}"
+                    "vedic_details": f"{vedic_tithi}, {nakshatra}, {masa}, {rashi}, {weekday}",
+                    "solar_birthday_next_year": solar_birthday_next_year.isoformat(),
+                    "next_vedic_dob": next_vedic_dob.isoformat()
                 }).execute()
                 st.info("✅ Data saved in Supabase successfully!")
             except Exception as e:
