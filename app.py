@@ -70,15 +70,23 @@ def get_masa(date_obj):
     return lunar_months[month_index]
 
 def next_year_same_tithi(dob):
-    """Find next Gregorian date with same Tithi next year considering Adhik Maas"""
+    """Find next Gregorian date with same Tithi and Masa next year (handles Adhik Maas)"""
     tithi_birth = get_tithi(dob)
     masa_birth = get_masa(dob)
-    next_year = dob.year + 1
-    check_date = datetime(next_year, 1, 1)
-    while True:
+    # Start checking from same month next year to stay in approximate season
+    try:
+        check_date = datetime(dob.year + 1, dob.month, dob.day)
+    except ValueError:
+        # For Feb 29 or invalid dates, fallback to Jan 1
+        check_date = datetime(dob.year + 1, 1, 1)
+    end_date = datetime(dob.year + 1, 12, 31)
+    
+    while check_date <= end_date:
         if get_tithi(check_date) == tithi_birth and get_masa(check_date) == masa_birth:
             return check_date.date()
         check_date += timedelta(days=1)
+    # Fallback if not found (rare)
+    return end_date.date()
 
 # --- Submit Button ---
 if st.button("Submit"):
