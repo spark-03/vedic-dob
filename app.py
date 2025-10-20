@@ -11,10 +11,11 @@ supabase: Client = create_client(url, key)
 st.title("📿 Vedic Date of Birth Finder")
 
 name = st.text_input("Enter your Name")
-dob = st.date_input(""Enter your Date of Birth",
+dob = st.date_input(
+    "Enter your Date of Birth",
     min_value=date(1900, 1, 1),  # allow as early as 1900
-    max_value=date.today()        # ")
-
+    max_value=date.today()        # cannot select future dates
+)
 def get_tithi(date):
     """Call Drik Panchang-like API for Tithi (simple free endpoint)."""
     try:
