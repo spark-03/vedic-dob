@@ -1,57 +1,122 @@
 import streamlit as st
-from datetime import date
 from supabase import create_client
-import panchanga
+from datetime import date, datetime, timedelta
+import ephem  # pip install ephem
 
-# --- Streamlit Page Setup ---
-st.set_page_config(page_title="Vedic DOB Finder", page_icon="🪔", layout="centered")
-st.title("🪔 Vedic Date of Birth Finder")
-st.write("Discover your Vedic (lunar) birth details using ancient Panchanga calculations.")
+st.title("📿 Vedic Date of Birth Finder (Full Panchang with Adhik Maas)")
 
-# --- Supabase Setup ---
+# --- Supabase Setup using Streamlit Secrets ---
 try:
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    st.write("✅ Connected to Supabase successfully!")
 except KeyError:
-    st.error("⚠️ Supabase keys missing! Please add them in Streamlit secrets.")
-    st.stop()
+    st.error("❌ Supabase URL or Key not found in Streamlit Secrets!")
 
-# --- Input Section ---
-name = st.text_input("Enter your name")
+# --- Streamlit Input ---
+name = st.text_input("Enter your Name")
 dob = st.date_input(
-    "Select your Date of Birth",
+    "Enter your Date of Birth",
     min_value=date(1900, 1, 1),
-    max_value=date.today(),
-    help="Choose your date of birth to calculate the corresponding Vedic (lunar) date."
+    max_value=date.today()
 )
 
-# --- Action Button ---
-if st.button("🔍 Find My Vedic DOB"):
-    if not name:
-        st.warning("Please enter your name before continuing.")
+# --- Panchang Calculation Functions ---
+def get_tithi(date_obj):
+    """Calculate Tithi (Moon-Sun angle)"""
+    date_str = date_obj.strftime("%Y/%m/%d")
+    moon = ephem.Moon(date_str)
+    sun = ephem.Sun(date_str)
+    moon_phase_angle = (moon.elong * 180 / 3.14159265) % 360
+    tithi_num = int(moon_phase_angle / 12) + 1  # 1-30
+    return tithi_num
+
+def tithi_name(tithi_num):
+    """Map Tithi number to name and Paksha"""
+    tithis = ["Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami", 
+              "Sashti", "Saptami", "Ashtami", "Navami", "Dashami", 
+              "Ekadashi", "Dwadashi", "Trayodashi", "Chaturdashi", 
+              "Purnima", "Amavasya"]
+    if tithi_num <= 15:
+        paksha = "Shukla"
+        tithi = tithis[tithi_num - 1]
     else:
-        try:
-            # Calculate Vedic Tithi (basic lunar logic)
-            vedic_tithi = panchanga.tithi(dob)
-            st.success(f"🪔 Your Vedic Tithi is: **{vedic_tithi}**")
+        paksha = "Krishna"
+        tithi = tithis[(tithi_num - 16) % 15]
+    return f"{paksha} {tithi}"
 
-            # Save details to Supabase
+def get_nakshatra(date_obj):
+    """Calculate Nakshatra"""
+    date_str = date_obj.strftime("%Y/%m/%d")
+    moon = ephem.Moon(date_str)
+    nakshatra_num = int((moon.ra * 180 / 3.14159265) / (360/27))
+    nakshatras = ["Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha",
+                  "Ardra", "Punarvasu", "Pushya", "Ashlesha", "Magha",
+                  "Purva Phalguni", "Uttara Phalguni", "Hasta", "Chitra",
+                  "Swati", "Vishakha", "Anuradha", "Jyeshtha", "Mula",
+                  "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta",
+                  "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"]
+    return nakshatras[nakshatra_num % 27]
+
+def get_masa(date_obj):
+    """Estimate lunar month based on Sun’s longitude"""
+    date_str = date_obj.strftime("%Y/%m/%d")
+    sun = ephem.Sun(date_str)
+    sun_longitude = sun.ra * 180 / 3.14159265
+    lunar_months = ["Chaitra", "Vaishakha", "Jyeshtha", "Ashadha", "Shravana",
+                    "Bhadrapada", "Ashwin", "Kartika", "Margashirsha", "Pausha",
+                    "Magha", "Phalguna"]
+    month_index = int(sun_longitude / 30) % 12
+    return lunar_months[month_index]
+
+def next_year_same_tithi(dob):
+    """Find next Gregorian date with same Tithi and Masa next year (handles Adhik Maas)"""
+    tithi_birth = get_tithi(dob)
+    masa_birth = get_masa(dob)
+    # Start checking from same month next year to stay in approximate season
+    try:
+        check_date = datetime(dob.year + 1, dob.month, dob.day)
+    except ValueError:
+        # For Feb 29 or invalid dates, fallback to Jan 1
+        check_date = datetime(dob.year + 1, 1, 1)
+    end_date = datetime(dob.year + 1, 12, 31)
+    
+    while check_date <= end_date:
+        if get_tithi(check_date) == tithi_birth and get_masa(check_date) == masa_birth:
+            return check_date.date()
+        check_date += timedelta(days=1)
+    # Fallback if not found (rare)
+    return end_date.date()
+
+# --- Submit Button ---
+if st.button("Submit"):
+    if not name:
+        st.warning("Please enter your name!")
+    else:
+        tithi_num = get_tithi(dob)
+        vedic_tithi = tithi_name(tithi_num)
+        nakshatra = get_nakshatra(dob)
+        masa = get_masa(dob)
+        weekday = dob.strftime("%A")
+        next_year_dob = next_year_same_tithi(dob)
+
+        st.success(f"Hello {name}!\n\n"
+                   f"📿 Your Vedic DOB:\n"
+                   f"- Tithi: {vedic_tithi}\n"
+                   f"- Nakshatra: {nakshatra}\n"
+                   f"- Masa: {masa}\n"
+                   f"- Weekday: {weekday}\n\n"
+                   f"📅 Next year's Gregorian date with same Tithi & Masa: {next_year_dob}")
+
+        # --- Save to Supabase ---
+        if 'supabase' in locals():
             try:
-                data = {
+                supabase.table("users").insert({
                     "name": name,
-                    "dob": str(dob),
-                    "vedic_details": vedic_tithi
-                }
-                supabase.table("users").insert(data).execute()
-                st.info("✅ Your details have been saved successfully in the database.")
+                    "dob": dob.isoformat(),
+                    "vedic_details": f"{vedic_tithi}, {nakshatra}, {masa}, {weekday}"
+                }).execute()
+                st.info("✅ Your data has been saved in the database!")
             except Exception as e:
-                st.error(f"❌ Could not save to Supabase: {e}")
+                st.error(f"⚠️ Could not save to database: {e}")
 
-        except Exception as e:
-            st.error(f"⚠️ Error calculating Vedic DOB: {e}")
-
-# --- Footer ---
-st.markdown("---")
-st.caption("Developed by **Spark** ✨ | Powered by ancient Panchanga science")
