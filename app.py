@@ -72,28 +72,29 @@ def get_rashi(date_obj):
               "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"]
     return rashis[rashi_index]
 
-def next_year_precise_tithi(dob):
-    """Find next year's date near solar birthday with same Tithi & Masa"""
+def next_year_precise_vedic_date(dob):
+    """Find next Gregorian date where Tithi, Masa, Nakshatra, and Rashi all match"""
+    # Original Vedic details
     tithi_birth = get_tithi(dob)
     masa_birth = get_masa(dob)
+    nakshatra_birth = get_nakshatra(dob)
+    rashi_birth = get_rashi(dob)
 
     try:
         start_date = datetime(dob.year + 1, dob.month, dob.day)
     except ValueError:
         start_date = datetime(dob.year + 1, 1, 1)
 
-    # Search ~60 days from solar birthday for closest match
-    for i in range(60):
+    # Search next ~400 days to find exact match
+    for i in range(400):
         d = start_date + timedelta(days=i)
-        if get_tithi(d) == tithi_birth and get_masa(d) == masa_birth:
+        if (get_tithi(d) == tithi_birth and
+            get_masa(d) == masa_birth and
+            get_nakshatra(d) == nakshatra_birth and
+            get_rashi(d) == rashi_birth):
             return d.date()
 
-    # Fallback: closest date with same Tithi only
-    for i in range(365):
-        d = datetime(dob.year + 1, 1, 1) + timedelta(days=i)
-        if get_tithi(d) == tithi_birth:
-            return d.date()
-
+    # Fallback: return same solar birthday if no match found
     return start_date.date()
 
 # --- Button Action ---
@@ -107,7 +108,7 @@ if st.button("Submit"):
         masa = get_masa(dob)
         rashi = get_rashi(dob)
         weekday = dob.strftime("%A")
-        next_year_dob = next_year_precise_tithi(dob)
+        next_year_dob = next_year_precise_vedic_date(dob)
 
         st.success(f"Hello {name}!\n\n"
                    f"📿 Vedic DOB Details:\n"
@@ -116,7 +117,7 @@ if st.button("Submit"):
                    f"- Masa: {masa}\n"
                    f"- Rashi: {rashi}\n"
                    f"- Weekday: {weekday}\n\n"
-                   f"📅 Next year's Gregorian date (same Tithi & Masa): {next_year_dob}")
+                   f"📅 Next year's Gregorian date (exact same Vedic DOB): {next_year_dob}")
 
         # --- Save to Supabase ---
         if 'supabase' in locals():
@@ -130,4 +131,4 @@ if st.button("Submit"):
             except Exception as e:
                 st.error(f"⚠️ Could not save to database: {e}")
 
-st.caption("Developed by Spark ✨ | Powered by Accurate Panchang Science")
+st.caption("Developed by Spark ✨ | Powered by Precise Panchang Science")
