@@ -1,47 +1,56 @@
 import streamlit as st
-from supabase import create_client, Client
-from datetime import datetime, timedelta
-import requests
+from supabase import create_client
+import os
+from datetime import date, datetime
+
+st.title("📅 Vedic Date of Birth Finder")
 
 # --- Supabase Setup ---
-url = st.secrets["supabase"]["url"]
-key = st.secrets["supabase"]["key"]
-supabase: Client = create_client(url, key)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-st.title("📿 Vedic Date of Birth Finder")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("❌ Missing Supabase credentials! Add SUPABASE_URL and SUPABASE_KEY in GitHub → Settings → Secrets → Actions.")
+else:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# --- Streamlit Input ---
 name = st.text_input("Enter your Name")
+
 dob = st.date_input(
     "Enter your Date of Birth",
-    min_value=date(1900, 1, 1),  # allow as early as 1900
-    max_value=date.today()        # cannot select future dates
+    min_value=date(1900, 1, 1),  # allow DOBs from 1900
+    max_value=date.today()        # cannot be future
 )
-def get_tithi(date):
-    """Call Drik Panchang-like API for Tithi (simple free endpoint)."""
-    try:
-        api_url = f"https://api.api-ninjas.com/v1/holidays?country=IN&year={date.year}"
-        # This is dummy request, you can replace with Drik Panchang or your own logic
-        # For demo, we'll return pseudo Tithi
-        tithis = ["Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami", "Sashti",
-                  "Saptami", "Ashtami", "Navami", "Dashami", "Ekadashi", "Dwadashi",
-                  "Trayodashi", "Chaturdashi", "Purnima", "Amavasya"]
-        index = date.day % 15
-        paksha = "Shukla" if date.day <= 15 else "Krishna"
-        return f"{paksha} {tithis[index]} (Simulated)"
-    except:
-        return "Error getting Tithi"
+
+# --- Placeholder Vedic DOB calculation ---
+def get_placeholder_vedic_dob(dob):
+    # Simple simulated Tithi (you can replace with real calculation later)
+    tithis = ["Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami", 
+              "Sashti", "Saptami", "Ashtami", "Navami", "Dashami", 
+              "Ekadashi", "Dwadashi", "Trayodashi", "Chaturdashi", 
+              "Purnima", "Amavasya"]
+    index = dob.day % 15
+    paksha = "Shukla" if dob.day <= 15 else "Krishna"
+    return f"{paksha} {tithis[index]}"
 
 if st.button("Submit"):
-    vedic_dob = get_tithi(dob)
-    # Simulate next year's same Tithi
-    next_year_dob = dob.replace(year=dob.year + 1)
+    if not name:
+        st.warning("Please enter your name!")
+    else:
+        vedic_result = get_placeholder_vedic_dob(dob)
+        next_year_dob = dob.replace(year=dob.year + 1)  # temporary next-year date
 
-    data = {
-        "name": name,
-        "dob": dob.isoformat(),
-        "vedic_dob": vedic_dob,
-        "next_year_dob": next_year_dob.isoformat()
-    }
-    supabase.table("users").insert(data).execute()
+        st.success(f"Hello {name}!\nYour Vedic DOB: {vedic_result}\nNext year's date: {next_year_dob}")
 
-    st.success(f"✅ Saved! In {dob.year+1}, your Vedic DOB ({vedic_dob}) will fall on {next_year_dob}")
+        # --- Save to Supabase ---
+        if 'supabase' in locals():
+            try:
+                supabase.table("vedic_dobs").insert({
+                    "name": name,
+                    "dob": dob.isoformat(),
+                    "vedic_details": vedic_result
+                }).execute()
+                st.info("✅ Your data has been saved in the database!")
+            except Exception as e:
+                st.error(f"⚠️ Could not save to database: {e}")
