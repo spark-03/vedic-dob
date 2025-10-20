@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date, datetime, timedelta
 import swisseph as swe
-from drik_panchanga import Panchanga
+from panchanga import Panchanga
 import ephem
 
 st.title("📿 Vedic Date of Birth Finder (Full Panchang with Adhik Maas)")
