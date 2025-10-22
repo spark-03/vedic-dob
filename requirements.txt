@@ -1,6 +1,6 @@
 streamlit
-supabase
-requests
-pytz
-ephem
+skyfield
+jplephem          # required by skyfield
 pyswisseph
+pytz
+supabase
