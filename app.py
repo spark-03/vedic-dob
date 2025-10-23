@@ -131,31 +131,6 @@ def masa_from_sidereal(sun_sid: float):
               "Magha", "Phalguna"]
     return months[idx]
 
-# -----------------------
-# Streamlit UI (modern look)
-# -----------------------
-st.set_page_config(page_title="Vedic DOB — Modern UI", layout="centered")
-st.markdown("<h1 style='text-align:center'>📿 Vedic DOB — Accurate & Fast</h1>", unsafe_allow_html=True)
-st.write("Enter birth details. Results use topocentric sidereal positions (Lahiri) for high accuracy.")
-
-# left column: inputs; right column: results
-col1, col2 = st.columns([1, 1])
-
-# Use session state to manage dynamic defaults
-if 'state' not in st.session_state:
-    st.session_state.state = sorted(DISTRICT_DATA.keys())[0]
-if 'district' not in st.session_state:
-    st.session_state.district = sorted(DISTRICT_DATA[st.session_state.state].keys())[0]
-    
-def update_place_data():
-    """Update session state when state/district changes."""
-    selected_state = st.session_state.get('selected_state', st.session_state.state)
-    selected_district = st.session_state.get('selected_district', st.session_state.district)
-    if selected_state in DISTRICT_DATA and selected_district in DISTRICT_DATA[selected_state]:
-        st.session_state.lat = DISTRICT_DATA[selected_state][selected_district]["lat"]
-        st.session_state.lon = DISTRICT_DATA[selected_state][selected_district]["lon"]
-        st.session_state.tz_name = DISTRICT_DATA[selected_state][selected_district]["tz"]
-        
 # --- Helper to get local time for default ---
 def get_local_time(tz_name):
     try:
@@ -164,55 +139,110 @@ def get_local_time(tz_name):
     except Exception:
         return dtime(6, 0)
 
+# -----------------------
+# Streamlit UI (modern look)
+# -----------------------
+st.set_page_config(page_title="Vedic DOB — Modern UI", layout="centered")
+st.markdown("<h1 style='text-align:center'>📿 Vedic DOB — Accurate & Fast</h1>", unsafe_allow_html=True)
+st.write("Enter birth details. Results use topocentric sidereal positions (Lahiri) for high accuracy.")
+
+# Initialize session state for persistent data
+if 'calculated' not in st.session_state:
+    st.session_state.calculated = False
+    
+if 'state' not in st.session_state:
+    st.session_state.state = sorted(DISTRICT_DATA.keys())[0]
+if 'district' not in st.session_state:
+    st.session_state.district = sorted(DISTRICT_DATA[st.session_state.state].keys())[0]
+
+# left column: inputs; right column: results
+col1, col2 = st.columns([1, 1])
+
+# --- INPUT SECTION (OUTSIDE OF st.form) ---
 with col1:
-    with st.form("input_form"):
-        name = st.text_input("Full name")
-        dob = st.date_input("Date of birth", min_value=date(1900, 1, 1), max_value=date.today())
+    name = st.text_input("Full name", key='input_name')
+    dob = st.date_input("Date of birth", min_value=date(1900, 1, 1), max_value=date.today(), key='input_dob')
+    
+    # Get current timezone info for the birth time suggestion
+    current_tz_name = DISTRICT_DATA.get(st.session_state.state, {}).get(st.session_state.district, {}).get("tz", "Asia/Kolkata")
+    birth_time = st.time_input("Time of birth (local)", value=get_local_time(current_tz_name), key='input_time')
+    
+    st.markdown("**Place of birth**")
+    
+    # Place selection: Changes will cause a rerun, naturally updating the district list
+    state = st.selectbox("State", sorted(DISTRICT_DATA.keys()), key='selected_state')
+    
+    # Ensure district selection list is based on the current state
+    district_list = sorted(DISTRICT_DATA.get(state, {}).keys())
+    if st.session_state.district not in district_list:
+        st.session_state.district = district_list[0] if district_list else ""
         
-        # Get current timezone info from default for the birth time suggestion
-        current_tz_name = DISTRICT_DATA.get(st.session_state.state, {}).get(st.session_state.district, {}).get("tz", "Asia/Kolkata")
-        birth_time = st.time_input("Time of birth (local)", value=get_local_time(current_tz_name))
-        
-        st.markdown("**Place of birth**")
-        
-        # Use a temporary key to update session state on selectbox change
-        state = st.selectbox("State", sorted(DISTRICT_DATA.keys()), key='selected_state', on_change=update_place_data)
-        district = st.selectbox("District", sorted(DISTRICT_DATA[state].keys()), key='selected_district', on_change=update_place_data)
-        
-        manual = st.checkbox("Manual lat/lon override", value=False)
-        
-        # Initialize default values based on selected district
-        default_lat = DISTRICT_DATA[state][district]["lat"]
-        default_lon = DISTRICT_DATA[state][district]["lon"]
-        default_tz = DISTRICT_DATA[state][district]["tz"]
+    district = st.selectbox("District", district_list, key='selected_district')
+    
+    manual = st.checkbox("Manual lat/lon override", value=False, key='input_manual')
+    
+    # Initialize lat/lon/tz based on selected district
+    default_data = DISTRICT_DATA.get(state, {}).get(district, {"lat": 0.0, "lon": 0.0, "tz": "UTC"})
+    default_lat = default_data["lat"]
+    default_lon = default_data["lon"]
+    tz_name = default_data["tz"]
 
-        if manual:
-            lat = st.number_input("Latitude (deg, north +)", value=float(default_lat))
-            lon = st.number_input("Longitude (deg, east +)", value=float(default_lon))
-            tz_name = st.text_input("Timezone (IANA)", value=default_tz)
-        else:
-            lat = default_lat
-            lon = default_lon
-            tz_name = default_tz
+    if manual:
+        lat = st.number_input("Latitude (deg, north +)", value=float(default_lat), key='input_lat')
+        lon = st.number_input("Longitude (deg, east +)", value=float(default_lon), key='input_lon')
+        tz_name = st.text_input("Timezone (IANA)", value=tz_name, key='input_tz')
+    else:
+        lat = default_lat
+        lon = default_lon
+        # tz_name is already set to default_data["tz"]
 
-        st.markdown("---")
-        # --- INPUT FOR YEAR SEARCH ---
-        current_year = date.today().year
-        year_to_search = st.number_input(
-            "Find Vedic DOB starting from year:",
-            min_value=dob.year + 1,
-            max_value=current_year + 5,
-            value=current_year,
-            step=1
-        )
-        # -----------------------------
-        submit = st.form_submit_button("Calculate Vedic DOB & Anniversaries")
+    st.markdown("---")
+    # --- INPUT FOR YEAR SEARCH ---
+    current_year = date.today().year
+    year_to_search = st.number_input(
+        "Find Vedic DOB starting from year:",
+        min_value=dob.year + 1,
+        max_value=current_year + 5,
+        value=current_year,
+        step=1,
+        key='input_year_search'
+    )
+    # -----------------------------
+    
+    # The submit button now triggers the main calculation logic
+    submit = st.button("Calculate Vedic DOB & Anniversaries", key='submit_button')
+# --- END INPUT SECTION ---
 
 with col2:
     st.empty()  # placeholder for results
 
-# handle submit
-if submit:
+# handle submit (or rerun after input change)
+if submit or st.session_state.calculated:
+    
+    # Set calculated flag to maintain results on rerun
+    st.session_state.calculated = True
+    
+    # --- Retrieve values from session state ---
+    name = st.session_state.input_name
+    dob = st.session_state.input_dob
+    birth_time = st.session_state.input_time
+    state = st.session_state.selected_state
+    district = st.session_state.selected_district
+    
+    if st.session_state.input_manual:
+        lat = st.session_state.input_lat
+        lon = st.session_state.input_lon
+        tz_name = st.session_state.input_tz
+    else:
+        # Recalculate defaults if not manual
+        default_data = DISTRICT_DATA.get(state, {}).get(district, {"lat": 0.0, "lon": 0.0, "tz": "UTC"})
+        lat = default_data["lat"]
+        lon = default_data["lon"]
+        tz_name = default_data["tz"]
+
+    year_to_search = st.session_state.input_year_search
+    # ----------------------------------------
+    
     # localize time and compute JD UT
     try:
         local_tz = pytz.timezone(tz_name)
@@ -240,164 +270,165 @@ if submit:
     masa_name = masa_from_sidereal(sun_sid)
     weekday = local_dt.strftime("%A")
 
-    # show results: modern UI cards/metrics
-    st.experimental_rerun() if False else None  # keeps layout stable
+    # Display results in col2
+    with col2:
+        st.markdown("---")
+        st.markdown(f"## ✨ Results for **{name or '—'}**")
+        st.markdown(f"**Birth (local):** {local_dt.strftime('%Y-%m-%d %H:%M:%S')} — `{state} / {district}`")
+        st.markdown("---")
 
-    # Results header
-    st.markdown("---")
-    st.markdown(f"## ✨ Results for **{name or '—'}**")
-    st.markdown(f"**Birth (local):** {local_dt.strftime('%Y-%m-%d %H:%M:%S')} — `{state} / {district}`")
-    st.markdown("---")
+        # cards: three columns
+        c1, c2, c3 = st.columns(3)
+        c1.metric(label="Tithi", value=f"{tname} (#{tnum})", delta=f"{paksha}")
+        c2.metric(label="Rashi (Moon sign)", value=f"{rashi_name}", delta=f"{rashi_deg:.2f}° into sign")
+        c3.metric(label="Nakshatra", value=f"{nak_name}", delta=f"Pada {nak_pada}")
 
-    # cards: three columns
-    c1, c2, c3 = st.columns(3)
-    c1.metric(label="Tithi", value=f"{tname} (#{tnum})", delta=f"{paksha}")
-    c2.metric(label="Rashi (Moon sign)", value=f"{rashi_name}", delta=f"{rashi_deg:.2f}° into sign")
-    c3.metric(label="Nakshatra", value=f"{nak_name}", delta=f"Pada {nak_pada}")
+        # second row: masa, weekday, sun sign
+        c4, c5, c6 = st.columns(3)
+        c4.metric(label="Masa (approx.)", value=masa_name)
+        c5.metric(label="Weekday", value=weekday)
+        c6.metric(label="Rashi (Sun sign)", value=f"{sun_rashi_name}", delta=f"{sun_rashi_deg:.2f}° into sign")
 
-    # second row: masa, weekday, sun sign
-    c4, c5, c6 = st.columns(3)
-    c4.metric(label="Masa (approx.)", value=masa_name)
-    c5.metric(label="Weekday", value=weekday)
-    c6.metric(label="Rashi (Sun sign)", value=f"{sun_rashi_name}", delta=f"{sun_rashi_deg:.2f}° into sign")
+        # diagnostics & raw numbers
+        with st.expander("Diagnostics & Raw numbers (click to open)"):
+            st.write(f"Ayanamsa (Lahiri) used: **{ay_deg:.6f}°**")
+            st.write(f"Sun (sidereal) : {sun_sid:.6f}°")
+            st.write(f"Moon (sidereal): {moon_sid:.6f}°")
+            st.write(f"Tithi angle (Moon - Sun): {tangle:.6f}°")
+            st.write(f"Nakshatra #{nak_idx} — {nak_deg:.6f}° into nakshatra")
+            st.write(f"Moon Rashi idx: {rashi_idx} (1..12), {rashi_deg:.6f}° into rashi")
+            st.write(f"Sun Rashi idx: {sun_rashi_idx} (1..12), {sun_rashi_deg:.6f}° into rashi")
+            st.write("Coordinates used:", f"{lat:.6f}°N, {lon:.6f}°E")
+            st.write("Local timezone:", tz_name)
 
-    # diagnostics & raw numbers
-    with st.expander("Diagnostics & Raw numbers (click to open)"):
-        st.write(f"Ayanamsa (Lahiri) used: **{ay_deg:.6f}°**")
-        st.write(f"Sun (sidereal) : {sun_sid:.6f}°")
-        st.write(f"Moon (sidereal): {moon_sid:.6f}°")
-        st.write(f"Tithi angle (Moon - Sun): {tangle:.6f}°")
-        st.write(f"Nakshatra #{nak_idx} — {nak_deg:.6f}° into nakshatra")
-        st.write(f"Moon Rashi idx: {rashi_idx} (1..12), {rashi_deg:.6f}° into rashi")
-        st.write(f"Sun Rashi idx: {sun_rashi_idx} (1..12), {sun_rashi_deg:.6f}° into rashi")
-        st.write("Coordinates used:", f"{lat:.6f}°N, {lon:.6f}°E")
-        st.write("Local timezone:", tz_name)
+        # --- Anniversary Search Logic ---
 
-    # --- Start Anniversary Search Logic ---
-
-    def find_vedic_anniversary(start_date_obj: date, max_days=380):
-        # Determine the local timezone for search iteration
-        try:
-            local_tz = pytz.timezone(tz_name)
-        except Exception:
-            local_tz = pytz.timezone("Asia/Kolkata")
-
-        # Set search time to noon local time for consistent comparison
-        start_dt_localized = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0)))
-
-        for i in range(max_days):
-            cand_local = start_dt_localized + timedelta(days=i)
-            cand_utc = cand_local.astimezone(pytz.utc)
-            jd_c = jd_from_utc(cand_utc)
-
+        def find_vedic_anniversary(start_date_obj: date, max_days=380):
+            # Determine the local timezone for search iteration
             try:
-                s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
+                local_tz = pytz.timezone(tz_name)
             except Exception:
-                continue
+                local_tz = pytz.timezone("Asia/Kolkata")
 
-            tnum_c, _, _, _ = tithi_from_sidereal(s_c, m_c)
-            nak_c, _, _, _ = nakshatra_from_sidereal(m_c)
-            rashi_c, _, _ = rashi_from_sidereal(m_c)
-            masa_c = masa_from_sidereal(s_c)
+            # Set search time to noon local time for consistent comparison
+            start_dt_localized = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0)))
 
-            # Full Match (Tithi, Nakshatra, Moon Rashi, Masa)
-            if (tnum_c == tnum and nak_c == nak_name and rashi_c == rashi_name and masa_c == masa_name):
-                return cand_local.date()
+            for i in range(max_days):
+                cand_local = start_dt_localized + timedelta(days=i)
+                cand_utc = cand_local.astimezone(pytz.utc)
+                jd_c = jd_from_utc(cand_utc)
 
-        return None
-    
-    # 1. Search for the requested year
-    if year_to_search == current_year:
-        # If searching the current year, start from today (upcoming only)
-        start_date_requested_year = date.today()
-    else:
-        # If searching a future year, start from Jan 1st of that year
-        start_date_requested_year = date(year_to_search, 1, 1)
+                # Stop search after a reasonable cycle (365 days)
+                if i >= 365 and cand_local.date() > start_date_obj + timedelta(days=365):
+                     break
 
-    with st.spinner(f"Searching for Vedic DOB in **{year_to_search}**..."):
-        vedic_dob_requested_year = find_vedic_anniversary(start_date_requested_year)
+                try:
+                    s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
+                except Exception:
+                    continue
 
-    # 2. Search for the next year
-    if vedic_dob_requested_year:
-        # Start search one day after the first found date
-        start_date_next_year = vedic_dob_requested_year + timedelta(days=1)
-    else:
-        # If the requested year's DOB wasn't found (likely passed already), start next search from Jan 1st of the next year.
-        start_date_next_year = date(year_to_search + 1, 1, 1)
+                tnum_c, _, _, _ = tithi_from_sidereal(s_c, m_c)
+                nak_c, _, _, _ = nakshatra_from_sidereal(m_c)
+                rashi_c, _, _ = rashi_from_sidereal(m_c)
+                masa_c = masa_from_sidereal(s_c)
 
-    with st.spinner(f"Searching for Vedic DOB in **{year_to_search + 1}**..."):
-        vedic_dob_next_year = find_vedic_anniversary(start_date_next_year)
+                # Full Match (Tithi, Nakshatra, Moon Rashi, Masa)
+                if (tnum_c == tnum and nak_c == nak_name and rashi_c == rashi_name and masa_c == masa_name):
+                    return cand_local.date()
+
+            return None
         
-    # --- End Anniversary Search Logic ---
-
-    # Update UI to show the selected year and next year dates
-    st.markdown("---")
-    st.markdown("### 📅 Upcoming Anniversaries")
-
-    c7, c8 = st.columns(2)
-
-    # Solar birthday metric remains the same
-    try:
-        solar_next = local_dt.replace(year=local_dt.year + 1).date()
-    except Exception:
-        solar_next = date(local_dt.year + 1, 1, 1)
-
-    c7.metric(label="Solar birthday (next year)", value=str(solar_next))
-
-    # Vedic Anniversaries
-    st.markdown("---")
-    st.markdown("### 🌙 Exact Vedic DOB (Tithi + Nakshatra + Rashi + Masa)")
-    c9, c10 = st.columns(2)
-
-    # --- MODIFIED: Show Weekday in Metric ---
-    if vedic_dob_requested_year:
-        requested_year_weekday = vedic_dob_requested_year.strftime('%A')
-        requested_year_value = str(vedic_dob_requested_year)
-    else:
-        requested_year_weekday = "N/A"
-        # If the requested year is the current year and nothing was found, it must have already passed.
+        # Determine the correct start date for the requested year
         if year_to_search == current_year:
-             requested_year_value = f"Passed already in {year_to_search}"
+            # If current year, search starts from today to find UPCOMING DOB
+            start_date_requested_year = date.today()
         else:
-             requested_year_value = f"Not found in {year_to_search}"
+            # If future year, search starts from Jan 1st
+            start_date_requested_year = date(year_to_search, 1, 1)
 
+        with st.spinner(f"Searching for Vedic DOB in **{year_to_search}**..."):
+            vedic_dob_requested_year = find_vedic_anniversary(start_date_requested_year)
 
-    if vedic_dob_next_year:
-        next_year_weekday = vedic_dob_next_year.strftime('%A')
-        next_year_value = str(vedic_dob_next_year)
-    else:
-        next_year_weekday = "N/A"
-        next_year_value = f"Not found in {year_to_search + 1}"
+        # 2. Search for the next year
+        if vedic_dob_requested_year:
+            # Start search one day after the first found date
+            start_date_next_year = vedic_dob_requested_year + timedelta(days=1)
+        else:
+            # If the requested year's DOB wasn't found, start the next search from Jan 1st of the next year.
+            start_date_next_year = date(year_to_search + 1, 1, 1)
 
-    c9.metric(label=f"Anniversary in {year_to_search}", value=requested_year_value, delta=requested_year_weekday)
-    c10.metric(label=f"Anniversary in {year_to_search + 1}", value=next_year_value, delta=next_year_weekday)
+        with st.spinner(f"Searching for Vedic DOB in **{year_to_search + 1}**..."):
+            vedic_dob_next_year = find_vedic_anniversary(start_date_next_year)
+            
+        # --- End Anniversary Search Logic ---
 
+        # Update UI to show the selected year and next year dates
+        st.markdown("---")
+        st.markdown("### 📅 Upcoming Anniversaries")
 
-    # Save to Supabase (optional)
-    if supabase:
+        c7, c8 = st.columns(2)
+
+        # Solar birthday metric remains the same
         try:
-            supabase.table("users").insert({
-                "name": name,
-                "dob": dob.isoformat(),
-                "time_of_birth": birth_time.strftime("%H:%M:%S"),
-                "state": state,
-                "district": district,
-                "lat": lat,
-                "lon": lon,
-                "vedic_tithi": tname,
-                "vedic_paksha": paksha,
-                "vedic_nakshatra": nak_name,
-                "vedic_nakshatra_pada": nak_pada,
-                "vedic_masa": masa_name,
-                "vedic_rashi": rashi_name,
-                "vedic_sun_rashi": sun_rashi_name,
-                "solar_birthday_next_year": solar_next.isoformat(),
-                "requested_year_vedic_dob": requested_year_value,
-                "next_year_vedic_dob": next_year_value
-            }).execute()
-            st.success("Saved to Supabase ✅")
-        except Exception as e:
-            st.error(f"Could not save to Supabase: {e}")
+            solar_next = local_dt.replace(year=local_dt.year + 1).date()
+        except Exception:
+            solar_next = date(local_dt.year + 1, 1, 1)
+
+        c7.metric(label="Solar birthday (next year)", value=str(solar_next))
+
+        # Vedic Anniversaries
+        st.markdown("---")
+        st.markdown("### 🌙 Exact Vedic DOB (Tithi + Nakshatra + Rashi + Masa)")
+        c9, c10 = st.columns(2)
+
+        # --- MODIFIED: Show Weekday in Metric ---
+        if vedic_dob_requested_year:
+            requested_year_weekday = vedic_dob_requested_year.strftime('%A')
+            requested_year_value = str(vedic_dob_requested_year)
+        else:
+            requested_year_weekday = "N/A"
+            if year_to_search == current_year:
+                 requested_year_value = f"Passed in {year_to_search}"
+            else:
+                 requested_year_value = f"Not found in {year_to_search}"
+
+
+        if vedic_dob_next_year:
+            next_year_weekday = vedic_dob_next_year.strftime('%A')
+            next_year_value = str(vedic_dob_next_year)
+        else:
+            next_year_weekday = "N/A"
+            next_year_value = f"Not found in {year_to_search + 1}"
+
+        c9.metric(label=f"Anniversary in {year_to_search}", value=requested_year_value, delta=requested_year_weekday)
+        c10.metric(label=f"Anniversary in {year_to_search + 1}", value=next_year_value, delta=next_year_weekday)
+
+
+        # Save to Supabase (optional)
+        if supabase:
+            try:
+                supabase.table("users").insert({
+                    "name": name,
+                    "dob": dob.isoformat(),
+                    "time_of_birth": birth_time.strftime("%H:%M:%S"),
+                    "state": state,
+                    "district": district,
+                    "lat": lat,
+                    "lon": lon,
+                    "vedic_tithi": tname,
+                    "vedic_paksha": paksha,
+                    "vedic_nakshatra": nak_name,
+                    "vedic_nakshatra_pada": nak_pada,
+                    "vedic_masa": masa_name,
+                    "vedic_rashi": rashi_name,
+                    "vedic_sun_rashi": sun_rashi_name,
+                    "solar_birthday_next_year": solar_next.isoformat(),
+                    "requested_year_vedic_dob": requested_year_value,
+                    "next_year_vedic_dob": next_year_value
+                }).execute()
+                st.success("Saved to Supabase ✅")
+            except Exception as e:
+                st.error(f"Could not save to Supabase: {e}")
 
 st.markdown("---")
 st.caption("Modern UI · Topocentric sidereal calculations (Lahiri) · Expand diagnostics for raw numbers. Add more districts in DISTRICT_DATA for coverage.")
