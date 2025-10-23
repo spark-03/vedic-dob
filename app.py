@@ -11,12 +11,6 @@ from supabase import create_client
 # Each district is {lat, lon, tz}
 # -----------------------
 DISTRICT_DATA = {
-    # -----------------------
-# Config / Comprehensive District Data
-# Each district is {lat, lon, tz}
-# Note: All districts in India use "Asia/Kolkata" (IST, UTC+05:30)
-# -----------------------
-DISTRICT_DATA = {
     "Andhra Pradesh": {
         # Coastal Andhra
         "Srikakulam": {"lat": 18.2974, "lon": 83.8970, "tz": "Asia/Kolkata"},
@@ -69,7 +63,7 @@ DISTRICT_DATA = {
     "Delhi": {"New Delhi": {"lat": 28.6139, "lon": 77.2090, "tz": "Asia/Kolkata"}},
 }
 
-}
+
 
 # -----------------------
 # Swiss Ephemeris init
