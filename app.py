@@ -158,7 +158,19 @@ with col1:
             lat = DISTRICT_DATA[state][district]["lat"]
             lon = DISTRICT_DATA[state][district]["lon"]
             tz_name = DISTRICT_DATA[state][district]["tz"]
-        submit = st.form_submit_button("Calculate Vedic DOB")
+
+        st.markdown("---")
+        # --- NEW INPUT FOR YEAR SEARCH ---
+        current_year = date.today().year
+        year_to_search = st.number_input(
+            "Find Vedic DOB starting from year:",
+            min_value=current_year,
+            max_value=current_year + 5,
+            value=current_year,
+            step=1
+        )
+        # ---------------------------------
+        submit = st.form_submit_button("Calculate Vedic DOB & Anniversaries")
 
 with col2:
     st.empty()  # placeholder for results
@@ -224,40 +236,40 @@ if submit:
         st.write(f"Sun Rashi idx: {sun_rashi_idx} (1..12), {sun_rashi_deg:.6f}° into rashi")
         st.write("Coordinates used:", f"{lat:.6f}°N, {lon:.6f}°E")
         st.write("Local timezone:", tz_name)
-        
+
     # --- Start Anniversary Search Logic ---
 
-    # Refactored search function (uses outer scope variables for elements, lon, lat, tz_name)
     def find_vedic_anniversary(start_date_obj: date, max_days=450):
         # Determine the local timezone for search iteration
         try:
             local_tz = pytz.timezone(tz_name)
         except Exception:
             local_tz = pytz.timezone("Asia/Kolkata")
-            
+
+        # Set search time to noon local time for consistent comparison
         start_dt_localized = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0)))
 
         for i in range(max_days):
             cand_local = start_dt_localized + timedelta(days=i)
             cand_utc = cand_local.astimezone(pytz.utc)
             jd_c = jd_from_utc(cand_utc)
-            
+
             try:
                 s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
             except Exception:
                 continue
-            
+
             tnum_c, _, _, _ = tithi_from_sidereal(s_c, m_c)
             nak_c, _, _, _ = nakshatra_from_sidereal(m_c)
             rashi_c, _, _ = rashi_from_sidereal(m_c)
             masa_c = masa_from_sidereal(s_c)
-            
+
             # Full Match (Tithi, Nakshatra, Moon Rashi, Masa)
             if (tnum_c == tnum and nak_c == nak_name and rashi_c == rashi_name and masa_c == masa_name):
                 return cand_local.date()
-        
-        # Fallback: Match Tithi + Masa only (if full match is too rare)
-        for i in range(max_days):
+
+        # Fallback (Match Tithi + Masa only) - Search up to a year + 10 days
+        for i in range(375):
             cand_local = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0))) + timedelta(days=i)
             cand_utc = cand_local.astimezone(pytz.utc)
             jd_c = jd_from_utc(cand_utc)
@@ -270,26 +282,25 @@ if submit:
 
         return None
 
-    # 1. Search for THIS YEAR's upcoming DOB (start search from today)
-    with st.spinner(f"Searching for upcoming Vedic DOB in {date.today().year}..."):
-        start_date_this_year = date.today() 
-        this_year_vedic = find_vedic_anniversary(start_date_this_year)
+    # 1. Search for the requested year
+    start_date_requested_year = date(year_to_search, dob.month, dob.day)
+    with st.spinner(f"Searching for Vedic DOB in {year_to_search}..."):
+        vedic_dob_requested_year = find_vedic_anniversary(start_date_requested_year)
 
-    # 2. Search for NEXT YEAR's DOB (start search one day after the first result)
-    with st.spinner(f"Searching for Vedic DOB in {date.today().year + 1}..."):
-        if this_year_vedic:
-            # Start search immediately after the first found date
-            start_date_next_year = this_year_vedic + timedelta(days=1)
-        else:
-            # Fallback: Start search one solar year from today if this year's was not found
-            # We use 366 days offset to be sure to skip the current year
-            start_date_next_year = date.today() + timedelta(days=366) 
-            
-        next_year_vedic = find_vedic_anniversary(start_date_next_year)
-    
+    # 2. Search for the next year
+    if vedic_dob_requested_year:
+        # Start search one day after the first found date
+        start_date_next_year = vedic_dob_requested_year + timedelta(days=1)
+    else:
+        # Fallback: Search 1 year later (e.g., if the DOB was in Jan, but search started in Dec)
+        start_date_next_year = date(year_to_search + 1, dob.month, dob.day) 
+
+    with st.spinner(f"Searching for Vedic DOB in {year_to_search + 1}..."):
+        vedic_dob_next_year = find_vedic_anniversary(start_date_next_year)
+
     # --- End Anniversary Search Logic ---
 
-    # Update UI to show both dates
+    # Update UI to show the selected year and next year dates
     st.markdown("---")
     st.markdown("### 📅 Upcoming Anniversaries")
 
@@ -300,19 +311,19 @@ if submit:
         solar_next = local_dt.replace(year=local_dt.year + 1).date()
     except Exception:
         solar_next = date(local_dt.year + 1, 1, 1)
-    
+
     c7.metric(label="Solar birthday (next year)", value=str(solar_next))
-    
+
     # Vedic Anniversaries
     st.markdown("---")
     st.markdown("### 🌙 Exact Vedic DOB (Tithi + Nakshatra + Rashi + Masa)")
     c9, c10 = st.columns(2)
-    
-    this_year_value = str(this_year_vedic) if this_year_vedic else "Not found this year"
-    next_year_value = str(next_year_vedic) if next_year_vedic else "Not found next year"
 
-    c9.metric(label=f"Upcoming Anniversary ({date.today().year})", value=this_year_value)
-    c10.metric(label=f"Next Anniversary ({date.today().year + 1})", value=next_year_value)
+    requested_year_value = str(vedic_dob_requested_year) if vedic_dob_requested_year else f"Not found in {year_to_search}"
+    next_year_value = str(vedic_dob_next_year) if vedic_dob_next_year else f"Not found in {year_to_search + 1}"
+
+    c9.metric(label=f"Anniversary in {year_to_search}", value=requested_year_value)
+    c10.metric(label=f"Anniversary in {year_to_search + 1}", value=next_year_value)
 
 
     # Save to Supabase (optional)
@@ -334,7 +345,7 @@ if submit:
                 "vedic_rashi": rashi_name,
                 "vedic_sun_rashi": sun_rashi_name,
                 "solar_birthday_next_year": solar_next.isoformat(),
-                "this_year_vedic_dob": this_year_value,
+                "requested_year_vedic_dob": requested_year_value,
                 "next_year_vedic_dob": next_year_value
             }).execute()
             st.success("Saved to Supabase ✅")
