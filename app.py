@@ -141,35 +141,71 @@ st.write("Enter birth details. Results use topocentric sidereal positions (Lahir
 # left column: inputs; right column: results
 col1, col2 = st.columns([1, 1])
 
+# Use session state to manage dynamic defaults
+if 'state' not in st.session_state:
+    st.session_state.state = sorted(DISTRICT_DATA.keys())[0]
+if 'district' not in st.session_state:
+    st.session_state.district = sorted(DISTRICT_DATA[st.session_state.state].keys())[0]
+    
+def update_place_data():
+    """Update session state when state/district changes."""
+    selected_state = st.session_state.get('selected_state', st.session_state.state)
+    selected_district = st.session_state.get('selected_district', st.session_state.district)
+    if selected_state in DISTRICT_DATA and selected_district in DISTRICT_DATA[selected_state]:
+        st.session_state.lat = DISTRICT_DATA[selected_state][selected_district]["lat"]
+        st.session_state.lon = DISTRICT_DATA[selected_state][selected_district]["lon"]
+        st.session_state.tz_name = DISTRICT_DATA[selected_state][selected_district]["tz"]
+        
+# --- Helper to get local time for default ---
+def get_local_time(tz_name):
+    try:
+        tz = pytz.timezone(tz_name)
+        return datetime.now(tz).time().replace(second=0, microsecond=0)
+    except Exception:
+        return dtime(6, 0)
+
 with col1:
     with st.form("input_form"):
         name = st.text_input("Full name")
         dob = st.date_input("Date of birth", min_value=date(1900, 1, 1), max_value=date.today())
-        birth_time = st.time_input("Time of birth (local)", value=dtime(6, 0))
+        
+        # Get current timezone info from default for the birth time suggestion
+        current_tz_name = DISTRICT_DATA.get(st.session_state.state, {}).get(st.session_state.district, {}).get("tz", "Asia/Kolkata")
+        birth_time = st.time_input("Time of birth (local)", value=get_local_time(current_tz_name))
+        
         st.markdown("**Place of birth**")
-        state = st.selectbox("State", sorted(DISTRICT_DATA.keys()))
-        district = st.selectbox("District", sorted(DISTRICT_DATA[state].keys()))
+        
+        # Use a temporary key to update session state on selectbox change
+        state = st.selectbox("State", sorted(DISTRICT_DATA.keys()), key='selected_state', on_change=update_place_data)
+        district = st.selectbox("District", sorted(DISTRICT_DATA[state].keys()), key='selected_district', on_change=update_place_data)
+        
         manual = st.checkbox("Manual lat/lon override", value=False)
+        
+        # Initialize default values based on selected district
+        default_lat = DISTRICT_DATA[state][district]["lat"]
+        default_lon = DISTRICT_DATA[state][district]["lon"]
+        default_tz = DISTRICT_DATA[state][district]["tz"]
+
         if manual:
-            lat = st.number_input("Latitude (deg, north +)", value=float(DISTRICT_DATA[state][district]["lat"]))
-            lon = st.number_input("Longitude (deg, east +)", value=float(DISTRICT_DATA[state][district]["lon"]))
-            tz_name = st.text_input("Timezone (IANA)", value=DISTRICT_DATA[state][district]["tz"])
+            lat = st.number_input("Latitude (deg, north +)", value=float(default_lat))
+            lon = st.number_input("Longitude (deg, east +)", value=float(default_lon))
+            tz_name = st.text_input("Timezone (IANA)", value=default_tz)
         else:
-            lat = DISTRICT_DATA[state][district]["lat"]
-            lon = DISTRICT_DATA[state][district]["lon"]
-            tz_name = DISTRICT_DATA[state][district]["tz"]
+            lat = default_lat
+            lon = default_lon
+            tz_name = default_tz
 
         st.markdown("---")
-        # --- NEW INPUT FOR YEAR SEARCH ---
+        # --- INPUT FOR YEAR SEARCH ---
         current_year = date.today().year
         year_to_search = st.number_input(
             "Find Vedic DOB starting from year:",
-            min_value=current_year,
+            min_value=dob.year + 1,
             max_value=current_year + 5,
             value=current_year,
             step=1
         )
-        # ---------------------------------
+        # -----------------------------
         submit = st.form_submit_button("Calculate Vedic DOB & Anniversaries")
 
 with col2:
@@ -239,7 +275,7 @@ if submit:
 
     # --- Start Anniversary Search Logic ---
 
-    def find_vedic_anniversary(start_date_obj: date, max_days=450):
+    def find_vedic_anniversary(start_date_obj: date, max_days=380):
         # Determine the local timezone for search iteration
         try:
             local_tz = pytz.timezone(tz_name)
@@ -268,23 +304,17 @@ if submit:
             if (tnum_c == tnum and nak_c == nak_name and rashi_c == rashi_name and masa_c == masa_name):
                 return cand_local.date()
 
-        # Fallback (Match Tithi + Masa only) - Search up to a year + 10 days
-        for i in range(375):
-            cand_local = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0))) + timedelta(days=i)
-            cand_utc = cand_local.astimezone(pytz.utc)
-            jd_c = jd_from_utc(cand_utc)
-            try:
-                s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
-            except Exception:
-                continue
-            if tithi_from_sidereal(s_c, m_c)[0] == tnum and masa_from_sidereal(s_c) == masa_name:
-                return cand_local.date()
-
         return None
-
+    
     # 1. Search for the requested year
-    start_date_requested_year = date(year_to_search, dob.month, dob.day)
-    with st.spinner(f"Searching for Vedic DOB in {year_to_search}..."):
+    if year_to_search == current_year:
+        # If searching the current year, start from today (upcoming only)
+        start_date_requested_year = date.today()
+    else:
+        # If searching a future year, start from Jan 1st of that year
+        start_date_requested_year = date(year_to_search, 1, 1)
+
+    with st.spinner(f"Searching for Vedic DOB in **{year_to_search}**..."):
         vedic_dob_requested_year = find_vedic_anniversary(start_date_requested_year)
 
     # 2. Search for the next year
@@ -292,12 +322,12 @@ if submit:
         # Start search one day after the first found date
         start_date_next_year = vedic_dob_requested_year + timedelta(days=1)
     else:
-        # Fallback: Search 1 year later (e.g., if the DOB was in Jan, but search started in Dec)
-        start_date_next_year = date(year_to_search + 1, dob.month, dob.day) 
+        # If the requested year's DOB wasn't found (likely passed already), start next search from Jan 1st of the next year.
+        start_date_next_year = date(year_to_search + 1, 1, 1)
 
-    with st.spinner(f"Searching for Vedic DOB in {year_to_search + 1}..."):
+    with st.spinner(f"Searching for Vedic DOB in **{year_to_search + 1}**..."):
         vedic_dob_next_year = find_vedic_anniversary(start_date_next_year)
-
+        
     # --- End Anniversary Search Logic ---
 
     # Update UI to show the selected year and next year dates
@@ -319,11 +349,28 @@ if submit:
     st.markdown("### 🌙 Exact Vedic DOB (Tithi + Nakshatra + Rashi + Masa)")
     c9, c10 = st.columns(2)
 
-    requested_year_value = str(vedic_dob_requested_year) if vedic_dob_requested_year else f"Not found in {year_to_search}"
-    next_year_value = str(vedic_dob_next_year) if vedic_dob_next_year else f"Not found in {year_to_search + 1}"
+    # --- MODIFIED: Show Weekday in Metric ---
+    if vedic_dob_requested_year:
+        requested_year_weekday = vedic_dob_requested_year.strftime('%A')
+        requested_year_value = str(vedic_dob_requested_year)
+    else:
+        requested_year_weekday = "N/A"
+        # If the requested year is the current year and nothing was found, it must have already passed.
+        if year_to_search == current_year:
+             requested_year_value = f"Passed already in {year_to_search}"
+        else:
+             requested_year_value = f"Not found in {year_to_search}"
 
-    c9.metric(label=f"Anniversary in {year_to_search}", value=requested_year_value)
-    c10.metric(label=f"Anniversary in {year_to_search + 1}", value=next_year_value)
+
+    if vedic_dob_next_year:
+        next_year_weekday = vedic_dob_next_year.strftime('%A')
+        next_year_value = str(vedic_dob_next_year)
+    else:
+        next_year_weekday = "N/A"
+        next_year_value = f"Not found in {year_to_search + 1}"
+
+    c9.metric(label=f"Anniversary in {year_to_search}", value=requested_year_value, delta=requested_year_weekday)
+    c10.metric(label=f"Anniversary in {year_to_search + 1}", value=next_year_value, delta=next_year_weekday)
 
 
     # Save to Supabase (optional)
