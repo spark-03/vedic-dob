@@ -158,7 +158,7 @@ if 'district' not in st.session_state:
 # left column: inputs; right column: results
 col1, col2 = st.columns([1, 1])
 
-# --- INPUT SECTION (OUTSIDE OF st.form) ---
+# --- INPUT SECTION ---
 with col1:
     name = st.text_input("Full name", key='input_name')
     dob = st.date_input("Date of birth", min_value=date(1900, 1, 1), max_value=date.today(), key='input_dob')
@@ -174,7 +174,7 @@ with col1:
     
     # Ensure district selection list is based on the current state
     district_list = sorted(DISTRICT_DATA.get(state, {}).keys())
-    if st.session_state.district not in district_list:
+    if st.session_state.district not in district_list or not district_list:
         st.session_state.district = district_list[0] if district_list else ""
         
     district = st.selectbox("District", district_list, key='selected_district')
@@ -277,11 +277,24 @@ if submit or st.session_state.calculated:
         st.markdown(f"**Birth (local):** {local_dt.strftime('%Y-%m-%d %H:%M:%S')} — `{state} / {district}`")
         st.markdown("---")
 
-        # cards: three columns
+        # cards: three columns (Using st.markdown for full name display)
         c1, c2, c3 = st.columns(3)
-        c1.metric(label="Tithi", value=f"{tname} (#{tnum})", delta=f"{paksha}")
-        c2.metric(label="Rashi (Moon sign)", value=f"{rashi_name}", delta=f"{rashi_deg:.2f}° into sign")
-        c3.metric(label="Nakshatra", value=f"{nak_name}", delta=f"Pada {nak_pada}")
+        
+        # Change 1: Use st.markdown/st.write to avoid metric truncation
+        with c1:
+            st.markdown(f"**Tithi**")
+            st.write(f"**{tname}** (#{tnum})")
+            st.caption(f"{paksha}")
+            
+        with c2:
+            st.markdown(f"**Rashi (Moon sign)**")
+            st.write(f"**{rashi_name}**")
+            st.caption(f"{rashi_deg:.2f}° into sign")
+            
+        with c3:
+            st.markdown(f"**Nakshatra**")
+            st.write(f"**{nak_name}**")
+            st.caption(f"Pada {nak_pada}")
 
         # second row: masa, weekday, sun sign
         c4, c5, c6 = st.columns(3)
@@ -364,31 +377,21 @@ if submit or st.session_state.calculated:
 
         # Update UI to show the selected year and next year dates
         st.markdown("---")
-        st.markdown("### 📅 Upcoming Anniversaries")
 
-        c7, c8 = st.columns(2)
-
-        # Solar birthday metric remains the same
-        try:
-            solar_next = local_dt.replace(year=local_dt.year + 1).date()
-        except Exception:
-            solar_next = date(local_dt.year + 1, 1, 1)
-
-        c7.metric(label="Solar birthday (next year)", value=str(solar_next))
-
+        # Removed Solar birthday section completely
+        
         # Vedic Anniversaries
-        st.markdown("---")
         st.markdown("### 🌙 Exact Vedic DOB (Tithi + Nakshatra + Rashi + Masa)")
         c9, c10 = st.columns(2)
 
-        # --- MODIFIED: Show Weekday in Metric ---
+        # --- MODIFIED: Ensure full name display and better handling of 'Not Found' ---
         if vedic_dob_requested_year:
             requested_year_weekday = vedic_dob_requested_year.strftime('%A')
             requested_year_value = str(vedic_dob_requested_year)
         else:
             requested_year_weekday = "N/A"
             if year_to_search == current_year:
-                 requested_year_value = f"Passed in {year_to_search}"
+                 requested_year_value = f"Passed already in {year_to_search}"
             else:
                  requested_year_value = f"Not found in {year_to_search}"
 
@@ -399,14 +402,25 @@ if submit or st.session_state.calculated:
         else:
             next_year_weekday = "N/A"
             next_year_value = f"Not found in {year_to_search + 1}"
+            
+        # Display Anniversary Results using markdown for full date/day display
+        with c9:
+            st.markdown(f"**Anniversary in {year_to_search}**")
+            st.markdown(f"<p style='font-size:1.5rem; font-weight:bold'>{requested_year_value}</p>", unsafe_allow_html=True)
+            if requested_year_weekday != "N/A":
+                st.markdown(f"<p style='color:green; font-weight:600'>{requested_year_weekday}</p>", unsafe_allow_html=True)
 
-        c9.metric(label=f"Anniversary in {year_to_search}", value=requested_year_value, delta=requested_year_weekday)
-        c10.metric(label=f"Anniversary in {year_to_search + 1}", value=next_year_value, delta=next_year_weekday)
+        with c10:
+            st.markdown(f"**Anniversary in {year_to_search + 1}**")
+            st.markdown(f"<p style='font-size:1.5rem; font-weight:bold'>{next_year_value}</p>", unsafe_allow_html=True)
+            if next_year_weekday != "N/A":
+                st.markdown(f"<p style='color:green; font-weight:600'>{next_year_weekday}</p>", unsafe_allow_html=True)
 
 
         # Save to Supabase (optional)
         if supabase:
             try:
+                # Solar birthday is removed from the data saved
                 supabase.table("users").insert({
                     "name": name,
                     "dob": dob.isoformat(),
@@ -422,7 +436,6 @@ if submit or st.session_state.calculated:
                     "vedic_masa": masa_name,
                     "vedic_rashi": rashi_name,
                     "vedic_sun_rashi": sun_rashi_name,
-                    "solar_birthday_next_year": solar_next.isoformat(),
                     "requested_year_vedic_dob": requested_year_value,
                     "next_year_vedic_dob": next_year_value
                 }).execute()
