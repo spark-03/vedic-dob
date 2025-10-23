@@ -115,7 +115,6 @@ def rashi_from_sidereal(moon_sid: float):
              "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"]
     return names[idx], idx + 1, deg_into
 
-# --- NEW FUNCTION FOR SUN RASHI ---
 def rashi_from_sidereal_sun(sun_sid: float):
     """Return Rashi (Sun Sign) name, index 1..12, degrees into rashi"""
     idx = int((sun_sid % 360) // 30)
@@ -123,7 +122,6 @@ def rashi_from_sidereal_sun(sun_sid: float):
     names = ["Mesha", "Vrishabha", "Mithuna", "Karka", "Simha", "Kanya",
              "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"]
     return names[idx], idx + 1, deg_into
-# ----------------------------------
 
 def masa_from_sidereal(sun_sid: float):
     """Approximate lunar month name from sidereal sun (Amanta-style approx)."""
@@ -189,8 +187,8 @@ if submit:
     # derive panchang elements
     tnum, tname, paksha, tangle = tithi_from_sidereal(sun_sid, moon_sid)
     nak_name, nak_idx, nak_deg, nak_pada = nakshatra_from_sidereal(moon_sid)
-    rashi_name, rashi_idx, rashi_deg = rashi_from_sidereal(moon_sid) # Moon Rashi
-    sun_rashi_name, sun_rashi_idx, sun_rashi_deg = rashi_from_sidereal_sun(sun_sid) # --- NEW: Sun Rashi ---
+    rashi_name, rashi_idx, rashi_deg = rashi_from_sidereal(moon_sid)
+    sun_rashi_name, sun_rashi_idx, sun_rashi_deg = rashi_from_sidereal_sun(sun_sid)
     masa_name = masa_from_sidereal(sun_sid)
     weekday = local_dt.strftime("%A")
 
@@ -209,21 +207,11 @@ if submit:
     c2.metric(label="Rashi (Moon sign)", value=f"{rashi_name}", delta=f"{rashi_deg:.2f}° into sign")
     c3.metric(label="Nakshatra", value=f"{nak_name}", delta=f"Pada {nak_pada}")
 
-    # second row: masa, weekday, sun sign, next solar
+    # second row: masa, weekday, sun sign
     c4, c5, c6 = st.columns(3)
     c4.metric(label="Masa (approx.)", value=masa_name)
     c5.metric(label="Weekday", value=weekday)
-    c6.metric(label="Rashi (Sun sign)", value=f"{sun_rashi_name}", delta=f"{sun_rashi_deg:.2f}° into sign") # --- NEW METRIC ---
-    
-    # solar birthday next year - put this below for a cleaner layout
-    st.markdown("---")
-    st.subheader("Next Significant Dates")
-    c7, c8 = st.columns(2)
-    try:
-        solar_next = local_dt.replace(year=local_dt.year + 1).date()
-    except Exception:
-        solar_next = date(local_dt.year + 1, 1, 1)
-    c7.metric(label="Solar birthday (next year)", value=str(solar_next))
+    c6.metric(label="Rashi (Sun sign)", value=f"{sun_rashi_name}", delta=f"{sun_rashi_deg:.2f}° into sign")
 
     # diagnostics & raw numbers
     with st.expander("Diagnostics & Raw numbers (click to open)"):
@@ -233,47 +221,98 @@ if submit:
         st.write(f"Tithi angle (Moon - Sun): {tangle:.6f}°")
         st.write(f"Nakshatra #{nak_idx} — {nak_deg:.6f}° into nakshatra")
         st.write(f"Moon Rashi idx: {rashi_idx} (1..12), {rashi_deg:.6f}° into rashi")
-        st.write(f"**Sun Rashi idx**: {sun_rashi_idx} (1..12), **{sun_rashi_deg:.6f}°** into rashi") # --- NEW DIAGNOSTIC ---
+        st.write(f"Sun Rashi idx: {sun_rashi_idx} (1..12), {sun_rashi_deg:.6f}° into rashi")
         st.write("Coordinates used:", f"{lat:.6f}°N, {lon:.6f}°E")
         st.write("Local timezone:", tz_name)
+        
+    # --- Start Anniversary Search Logic ---
 
-    # find next exact vedic date (match Tithi+Masa+Nakshatra+Rashi)
-    with st.spinner("Searching for next exact Vedic DOB (can take a few seconds)..."):
-        def find_next_vedic(local_dt_localized, max_days=450):
+    # Refactored search function (uses outer scope variables for elements, lon, lat, tz_name)
+    def find_vedic_anniversary(start_date_obj: date, max_days=450):
+        # Determine the local timezone for search iteration
+        try:
+            local_tz = pytz.timezone(tz_name)
+        except Exception:
+            local_tz = pytz.timezone("Asia/Kolkata")
+            
+        start_dt_localized = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0)))
+
+        for i in range(max_days):
+            cand_local = start_dt_localized + timedelta(days=i)
+            cand_utc = cand_local.astimezone(pytz.utc)
+            jd_c = jd_from_utc(cand_utc)
+            
             try:
-                start = local_dt_localized.replace(year=local_dt_localized.year + 1)
+                s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
             except Exception:
-                start = local_dt_localized.replace(year=local_dt_localized.year + 1, month=1, day=1)
-            for i in range(max_days):
-                cand_local = start + timedelta(days=i)
-                cand_utc = cand_local.astimezone(pytz.utc)
-                jd_c = jd_from_utc(cand_utc)
-                try:
-                    s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
-                except Exception:
-                    continue
-                tnum_c, tname_c, _, _ = tithi_from_sidereal(s_c, m_c)
-                nak_c, _, _, _ = nakshatra_from_sidereal(m_c)
-                rashi_c, _, _ = rashi_from_sidereal(m_c)
-                masa_c = masa_from_sidereal(s_c)
-                if (tnum_c == tnum and nak_c == nak_name and rashi_c == rashi_name and masa_c == masa_name):
-                    return cand_local.date()
-            # fallback: match tithi+masa only
-            for i in range(365):
-                cand_local = start + timedelta(days=i)
-                cand_utc = cand_local.astimezone(pytz.utc)
-                jd_c = jd_from_utc(cand_utc)
-                try:
-                    s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
-                except Exception:
-                    continue
-                if tithi_from_sidereal(s_c, m_c)[0] == tnum and masa_from_sidereal(s_c) == masa_name:
-                    return cand_local.date()
-            return start.date()
+                continue
+            
+            tnum_c, _, _, _ = tithi_from_sidereal(s_c, m_c)
+            nak_c, _, _, _ = nakshatra_from_sidereal(m_c)
+            rashi_c, _, _ = rashi_from_sidereal(m_c)
+            masa_c = masa_from_sidereal(s_c)
+            
+            # Full Match (Tithi, Nakshatra, Moon Rashi, Masa)
+            if (tnum_c == tnum and nak_c == nak_name and rashi_c == rashi_name and masa_c == masa_name):
+                return cand_local.date()
+        
+        # Fallback: Match Tithi + Masa only (if full match is too rare)
+        for i in range(max_days):
+            cand_local = local_tz.localize(datetime.combine(start_date_obj, dtime(12, 0))) + timedelta(days=i)
+            cand_utc = cand_local.astimezone(pytz.utc)
+            jd_c = jd_from_utc(cand_utc)
+            try:
+                s_c, m_c, _ = sun_moon_sidereal_topo(jd_c, lon, lat, 0.0)
+            except Exception:
+                continue
+            if tithi_from_sidereal(s_c, m_c)[0] == tnum and masa_from_sidereal(s_c) == masa_name:
+                return cand_local.date()
 
-        next_vedic = find_next_vedic(local_dt)
+        return None
 
-    c8.metric(label="Next Vedic birthday (Tithi+Nak+Rashi)", value=str(next_vedic))
+    # 1. Search for THIS YEAR's upcoming DOB (start search from today)
+    with st.spinner(f"Searching for upcoming Vedic DOB in {date.today().year}..."):
+        start_date_this_year = date.today() 
+        this_year_vedic = find_vedic_anniversary(start_date_this_year)
+
+    # 2. Search for NEXT YEAR's DOB (start search one day after the first result)
+    with st.spinner(f"Searching for Vedic DOB in {date.today().year + 1}..."):
+        if this_year_vedic:
+            # Start search immediately after the first found date
+            start_date_next_year = this_year_vedic + timedelta(days=1)
+        else:
+            # Fallback: Start search one solar year from today if this year's was not found
+            # We use 366 days offset to be sure to skip the current year
+            start_date_next_year = date.today() + timedelta(days=366) 
+            
+        next_year_vedic = find_vedic_anniversary(start_date_next_year)
+    
+    # --- End Anniversary Search Logic ---
+
+    # Update UI to show both dates
+    st.markdown("---")
+    st.markdown("### 📅 Upcoming Anniversaries")
+
+    c7, c8 = st.columns(2)
+
+    # Solar birthday metric remains the same
+    try:
+        solar_next = local_dt.replace(year=local_dt.year + 1).date()
+    except Exception:
+        solar_next = date(local_dt.year + 1, 1, 1)
+    
+    c7.metric(label="Solar birthday (next year)", value=str(solar_next))
+    
+    # Vedic Anniversaries
+    st.markdown("---")
+    st.markdown("### 🌙 Exact Vedic DOB (Tithi + Nakshatra + Rashi + Masa)")
+    c9, c10 = st.columns(2)
+    
+    this_year_value = str(this_year_vedic) if this_year_vedic else "Not found this year"
+    next_year_value = str(next_year_vedic) if next_year_vedic else "Not found next year"
+
+    c9.metric(label=f"Upcoming Anniversary ({date.today().year})", value=this_year_value)
+    c10.metric(label=f"Next Anniversary ({date.today().year + 1})", value=next_year_value)
 
 
     # Save to Supabase (optional)
@@ -293,9 +332,10 @@ if submit:
                 "vedic_nakshatra_pada": nak_pada,
                 "vedic_masa": masa_name,
                 "vedic_rashi": rashi_name,
-                "vedic_sun_rashi": sun_rashi_name, # --- NEW FIELD ---
+                "vedic_sun_rashi": sun_rashi_name,
                 "solar_birthday_next_year": solar_next.isoformat(),
-                "next_vedic_dob": str(next_vedic)
+                "this_year_vedic_dob": this_year_value,
+                "next_year_vedic_dob": next_year_value
             }).execute()
             st.success("Saved to Supabase ✅")
         except Exception as e:
