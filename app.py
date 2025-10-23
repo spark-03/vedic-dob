@@ -11,12 +11,45 @@ from supabase import create_client
 # Each district is {lat, lon, tz}
 # -----------------------
 DISTRICT_DATA = {
+    # -----------------------
+# Config / Comprehensive District Data
+# Each district is {lat, lon, tz}
+# Note: All districts in India use "Asia/Kolkata" (IST, UTC+05:30)
+# -----------------------
+DISTRICT_DATA = {
     "Andhra Pradesh": {
-        "Nellore": {"lat": 14.4426, "lon": 79.9865, "tz": "Asia/Kolkata"},
+        # Coastal Andhra
+        "Srikakulam": {"lat": 18.2974, "lon": 83.8970, "tz": "Asia/Kolkata"},
+        "Parvathipuram Manyam": {"lat": 18.7845, "lon": 83.4116, "tz": "Asia/Kolkata"},
+        "Vizianagaram": {"lat": 18.1170, "lon": 83.3934, "tz": "Asia/Kolkata"},
         "Visakhapatnam": {"lat": 17.6868, "lon": 83.2185, "tz": "Asia/Kolkata"},
-        "Vijayawada": {"lat": 16.5062, "lon": 80.6480, "tz": "Asia/Kolkata"},
+        "Alluri Sitharama Raju": {"lat": 17.6868, "lon": 83.2185, "tz": "Asia/Kolkata"}, # Placeholder: Same as Vizag city for now
+        "Anakapalli": {"lat": 17.7011, "lon": 83.0035, "tz": "Asia/Kolkata"},
+        "Kakinada": {"lat": 16.9912, "lon": 82.2344, "tz": "Asia/Kolkata"},
+        "East Godavari (Rajahmundry)": {"lat": 17.0006, "lon": 81.7925, "tz": "Asia/Kolkata"},
+        "Konaseema": {"lat": 16.7115, "lon": 82.0294, "tz": "Asia/Kolkata"},
+        "West Godavari (Bhimavaram)": {"lat": 16.5332, "lon": 81.5230, "tz": "Asia/Kolkata"},
+        "Eluru": {"lat": 16.7115, "lon": 81.1070, "tz": "Asia/Kolkata"},
+        "Krishna (Machilipatnam)": {"lat": 16.1833, "lon": 81.1333, "tz": "Asia/Kolkata"},
+        "NTR (Vijayawada)": {"lat": 16.5062, "lon": 80.6480, "tz": "Asia/Kolkata"},
+        "Guntur": {"lat": 16.3056, "lon": 80.4402, "tz": "Asia/Kolkata"},
+        "Palnadu": {"lat": 16.2575, "lon": 79.9922, "tz": "Asia/Kolkata"},
+        "Bapatla": {"lat": 15.8972, "lon": 80.4659, "tz": "Asia/Kolkata"},
+        "Prakasam (Ongole)": {"lat": 15.5000, "lon": 80.0500, "tz": "Asia/Kolkata"},
+        "Nellore": {"lat": 14.4426, "lon": 79.9865, "tz": "Asia/Kolkata"},
+        
+        # Rayalaseema
+        "Kurnool": {"lat": 15.8224, "lon": 78.0385, "tz": "Asia/Kolkata"},
+        "Nandyal": {"lat": 15.4833, "lon": 78.4833, "tz": "Asia/Kolkata"},
+        "Anantapur": {"lat": 14.6819, "lon": 77.6001, "tz": "Asia/Kolkata"},
+        "Sri Sathya Sai (Puttaparthi)": {"lat": 14.1678, "lon": 77.8188, "tz": "Asia/Kolkata"},
+        "YSR (Kadapa)": {"lat": 14.4682, "lon": 78.8220, "tz": "Asia/Kolkata"},
+        "Annamayya (Rayachoti)": {"lat": 14.0500, "lon": 78.7500, "tz": "Asia/Kolkata"},
         "Tirupati": {"lat": 13.6288, "lon": 79.4192, "tz": "Asia/Kolkata"},
+        "Chittoor": {"lat": 13.1876, "lon": 79.1026, "tz": "Asia/Kolkata"},
     },
+    
+    # Keep your other states below this line:
     "Telangana": {
         "Hyderabad": {"lat": 17.3850, "lon": 78.4867, "tz": "Asia/Kolkata"},
         "Warangal": {"lat": 17.9789, "lon": 79.5916, "tz": "Asia/Kolkata"},
@@ -34,7 +67,8 @@ DISTRICT_DATA = {
         "Pune": {"lat": 18.5204, "lon": 73.8567, "tz": "Asia/Kolkata"},
     },
     "Delhi": {"New Delhi": {"lat": 28.6139, "lon": 77.2090, "tz": "Asia/Kolkata"}},
-    # Add more states/districts as needed
+}
+
 }
 
 # -----------------------
