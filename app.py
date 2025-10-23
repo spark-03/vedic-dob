@@ -1,117 +1,138 @@
-import streamlit as st
-from datetime import date, datetime, timedelta, time as dtime
-import pytz
 import swisseph as swe
-from supabase import create_client
+import pytz
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Vedic DOB Finder", layout="centered")
-st.title("📿 Vedic DOB Finder — Swiss Ephemeris (Lahiri)")
+# Lahiri Ayanamsa for sidereal positions
+swe.set_sid_mode(swe.SIDM_LAHIRI)
 
-# Optional Supabase setup
-try:
-    SUPABASE_URL = st.secrets["supabase"]["url"]
-    SUPABASE_KEY = st.secrets["supabase"]["key"]
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception:
-    supabase = None
-
-# Coordinates (district-level)
-location_data = {
+# Coordinates database (add more districts as needed)
+district_coords = {
     "Andhra Pradesh": {
-        "Nellore": {"lat": 14.4426, "lon": 79.9865, "tz": "Asia/Kolkata"},
-        "Visakhapatnam": {"lat": 17.6868, "lon": 83.2185, "tz": "Asia/Kolkata"},
+        "Nellore": (14.4426, 79.9865),
+        "Visakhapatnam": (17.6868, 83.2185),
+        "Vijayawada": (16.5062, 80.6480),
+        "Tirupati": (13.6288, 79.4192),
     },
-    "Telangana": {"Hyderabad": {"lat": 17.3850, "lon": 78.4867, "tz": "Asia/Kolkata"}},
 }
 
-# Set Lahiri mode
-swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
-
-# Helpers
-def jd_from_utc_dt(utc_dt: datetime) -> float:
-    return swe.julday(
-        utc_dt.year,
-        utc_dt.month,
-        utc_dt.day,
-        utc_dt.hour + utc_dt.minute / 60.0 + utc_dt.second / 3600.0,
-    )
-
-def sun_moon_sidereal_topo(jd_ut: float, lon: float, lat: float, height: float = 0.0):
-    swe.set_topo(lon, lat, height)
+# ------------------------------------------------------------
+# Helper: Sun and Moon positions (sidereal)
+# ------------------------------------------------------------
+def sun_moon_sidereal_topo(jd_ut, lon, lat):
+    """Compute sidereal longitudes of Sun and Moon (topocentric, Lahiri ayanamsa)."""
     flags = swe.FLG_SWIEPH | swe.FLG_SIDEREAL | swe.FLG_TOPOCTR
-    sun = swe.calc_ut(jd_ut, swe.SUN, flags)[0] % 360
-    moon = swe.calc_ut(jd_ut, swe.MOON, flags)[0] % 360
-    return sun, moon
+    swe.set_topo(lon, lat, 0)
+    swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
 
-def tithi_num_from_sidereal(sun_sid: float, moon_sid: float) -> int:
-    diff = (moon_sid - sun_sid) % 360
-    return int(diff // 12) + 1  # 1..30
+    sun_res, _ = swe.calc_ut(jd_ut, swe.SUN, flags)
+    moon_res, _ = swe.calc_ut(jd_ut, swe.MOON, flags)
 
-def tithi_name_from_num(tnum: int) -> str:
-    tithis = [
-        "Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami",
-        "Shashthi", "Saptami", "Ashtami", "Navami", "Dashami",
-        "Ekadashi", "Dwadashi", "Trayodashi", "Chaturdashi", "Purnima/Amavasya"
+    sun_lon = sun_res[0] % 360
+    moon_lon = moon_res[0] % 360
+    return sun_lon, moon_lon
+
+
+# ------------------------------------------------------------
+# Compute Tithi, Nakshatra, Masa, Rashi
+# ------------------------------------------------------------
+def tithi_nakshatra_masa_rashi(jd_ut, lon, lat):
+    sun_lon, moon_lon = sun_moon_sidereal_topo(jd_ut, lon, lat)
+    diff = (moon_lon - sun_lon + 360) % 360
+
+    # --- Tithi ---
+    tithi_num = int(diff // 12) + 1
+    paksha = "Shukla" if diff < 180 else "Krishna"
+    tithi_names = [
+        "Prathama", "Dvitiya", "Tritiya", "Chaturthi", "Panchami", "Shashthi", "Saptami",
+        "Ashtami", "Navami", "Dashami", "Ekadashi", "Dwadashi", "Trayodashi",
+        "Chaturdashi", "Purnima / Amavasya"
     ]
-    if 1 <= tnum <= 15:
-        return "Shukla " + tithis[tnum - 1]
-    else:
-        return "Krishna " + tithis[(tnum - 16) % 15]
+    tithi = f"{paksha} {tithi_names[(tithi_num - 1) % 15]}"
 
-def nakshatra_from_sidereal(moon_sid: float):
-    idx = int((moon_sid % 360) // (360 / 27))
-    names = [
-        "Ashwini","Bharani","Krittika","Rohini","Mrigashirsha","Ardra","Punarvasu",
-        "Pushya","Ashlesha","Magha","Purva Phalguni","Uttara Phalguni","Hasta",
-        "Chitra","Swati","Vishakha","Anuradha","Jyeshtha","Mula","Purva Ashadha",
-        "Uttara Ashadha","Shravana","Dhanishta","Shatabhisha","Purva Bhadrapada",
-        "Uttara Bhadrapada","Revati"
+    # --- Nakshatra ---
+    nakshatra_num = int((moon_lon % 360) // (360 / 27))
+    nakshatra_names = [
+        "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashirsha", "Ardra",
+        "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
+        "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
+        "Moola", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta",
+        "Shatabhisha", "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
     ]
-    return names[idx], idx, (moon_sid % 360) - idx * (360 / 27)
+    nakshatra = nakshatra_names[nakshatra_num]
 
-def rashi_from_sidereal(moon_sid: float):
-    idx = int(moon_sid // 30)
-    rashis = ["Mesha","Vrishabha","Mithuna","Karka","Simha","Kanya","Tula","Vrischika",
-              "Dhanu","Makara","Kumbha","Meena"]
-    return rashis[idx], idx, moon_sid - idx * 30
+    # --- Rashi (Moon Sign) ---
+    rashi_num = int((moon_lon % 360) // 30)
+    rashi_names = [
+        "Mesha", "Vrishabha", "Mithuna", "Karka", "Simha", "Kanya",
+        "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"
+    ]
+    rashi = rashi_names[rashi_num]
 
-def masa_from_sidereal(sun_sid: float):
-    months = ["Chaitra","Vaishakha","Jyeshtha","Ashadha","Shravana","Bhadrapada",
-              "Ashwin","Kartika","Margashirsha","Pausha","Magha","Phalguna"]
-    return months[int((sun_sid + 30) // 30) % 12]
+    # --- Masa ---
+    sun_masa = int((sun_lon % 360) // 30)
+    masa_names = [
+        "Chaitra", "Vaishakha", "Jyeshtha", "Ashadha", "Shravana",
+        "Bhadrapada", "Ashwin", "Kartika", "Margashira", "Pushya",
+        "Magha", "Phalguna"
+    ]
+    masa = masa_names[sun_masa]
 
-# Input Form
-with st.form("birth"):
-    name = st.text_input("Full name")
-    dob = st.date_input("Date of birth", min_value=date(1900, 1, 1))
-    birth_time = st.time_input("Time of birth (local)", value=dtime(0, 0))
-    state = st.selectbox("State", sorted(location_data.keys()))
-    district = st.selectbox("District", sorted(location_data[state].keys()))
-    submit = st.form_submit_button("Calculate")
+    return tithi, nakshatra, masa, rashi
 
-if submit:
-    lat = location_data[state][district]["lat"]
-    lon = location_data[state][district]["lon"]
-    tz = pytz.timezone(location_data[state][district]["tz"])
 
-    local_dt = tz.localize(datetime.combine(dob, birth_time))
-    utc_dt = local_dt.astimezone(pytz.utc)
-    jd_ut = jd_from_utc_dt(utc_dt)
+# ------------------------------------------------------------
+# Find next same Vedic DOB
+# ------------------------------------------------------------
+def find_next_exact_vedic(jd_ut, lon, lat):
+    ref_tithi, ref_nakshatra, ref_masa, ref_rashi = tithi_nakshatra_masa_rashi(jd_ut, lon, lat)
+    for i in range(1, 500):  # search next 500 days
+        jd_next = jd_ut + i
+        tithi, nakshatra, masa, rashi = tithi_nakshatra_masa_rashi(jd_next, lon, lat)
+        if (tithi == ref_tithi and nakshatra == ref_nakshatra
+                and masa == ref_masa and rashi == ref_rashi):
+            return swe.revjul(jd_next)
+    return None
 
-    sun_sid, moon_sid = sun_moon_sidereal_topo(jd_ut, lon, lat)
-    tnum = tithi_num_from_sidereal(sun_sid, moon_sid)
-    tithi = tithi_name_from_num(tnum)
-    nak, _, _ = nakshatra_from_sidereal(moon_sid)
-    masa = masa_from_sidereal(sun_sid)
-    rashi, _, _ = rashi_from_sidereal(moon_sid)
-    paksha = "Shukla" if tnum <= 15 else "Krishna"
-    weekday = local_dt.strftime("%A")
 
-    st.markdown("### ✅ Vedic Birth Details")
-    st.write(f"**Name:** {name}")
-    st.write(f"**Date (local):** {local_dt}")
-    st.write(f"**Tithi:** {tithi} ({paksha})")
-    st.write(f"**Nakshatra:** {nak}")
-    st.write(f"**Masa:** {masa}")
-    st.write(f"**Rashi:** {rashi}")
-    st.write(f"**Weekday:** {weekday}")
+# ------------------------------------------------------------
+# Main Program
+# ------------------------------------------------------------
+if __name__ == "__main__":
+    print("📿 Vedic DOB Calculator\n")
+
+    name = input("Enter full name: ")
+    dob_str = input("Enter date of birth (YYYY-MM-DD): ")
+    tob_str = input("Enter time of birth (HH:MM in 24h): ")
+
+    state = input("Enter State (e.g., Andhra Pradesh): ")
+    district = input("Enter District (e.g., Nellore): ")
+
+    lat, lon = district_coords[state][district]
+    tz = pytz.timezone("Asia/Kolkata")
+
+    dob_dt = datetime.strptime(f"{dob_str} {tob_str}", "%Y-%m-%d %H:%M")
+    dob_dt_local = tz.localize(dob_dt)
+    jd_ut = swe.julday(dob_dt_local.year, dob_dt_local.month, dob_dt_local.day,
+                       dob_dt_local.hour + dob_dt_local.minute / 60.0)
+
+    tithi, nakshatra, masa, rashi = tithi_nakshatra_masa_rashi(jd_ut, lon, lat)
+
+    weekday = dob_dt_local.strftime("%A")
+    next_vedic = find_next_exact_vedic(jd_ut, lon, lat)
+    next_gregorian = swe.revjul(jd_ut + 365)
+
+    print("\n✅ Computed Vedic Details (Sidereal — Lahiri):")
+    print(f"Name: {name}")
+    print(f"Birth (local): {dob_dt_local.strftime('%Y-%m-%d %H:%M')} ({state} / {district})")
+    print(f"Coordinates used: {lat:.4f}°N, {lon:.4f}°E — timezone Asia/Kolkata\n")
+    print(f"Tithi: {tithi}")
+    print(f"Nakshatra: {nakshatra}")
+    print(f"Masa: {masa}")
+    print(f"Rashi (Moon sign): {rashi}")
+    print(f"Weekday: {weekday}\n")
+
+    print("Next birthdays:")
+    print(f"- Solar birthday next year: {next_gregorian[0]}-{next_gregorian[1]:02d}-{next_gregorian[2]:02d}")
+    if next_vedic:
+        y, m, d, _ = next_vedic
+        print(f"- Next exact Vedic DOB (same Tithi+Nakshatra+Masa+Rashi): {y}-{m:02d}-{d:02d}")
