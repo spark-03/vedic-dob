@@ -108,12 +108,22 @@ def nakshatra_from_sidereal(moon_sid: float):
     return names[idx0], idx0 + 1, deg_into, pada
 
 def rashi_from_sidereal(moon_sid: float):
-    """Return rashi name, index 1..12, degrees into rashi"""
+    """Return Rashi (Moon Sign) name, index 1..12, degrees into rashi"""
     idx = int((moon_sid % 360) // 30)
     deg_into = (moon_sid % 360) - idx * 30
     names = ["Mesha", "Vrishabha", "Mithuna", "Karka", "Simha", "Kanya",
              "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"]
     return names[idx], idx + 1, deg_into
+
+# --- NEW FUNCTION FOR SUN RASHI ---
+def rashi_from_sidereal_sun(sun_sid: float):
+    """Return Rashi (Sun Sign) name, index 1..12, degrees into rashi"""
+    idx = int((sun_sid % 360) // 30)
+    deg_into = (sun_sid % 360) - idx * 30
+    names = ["Mesha", "Vrishabha", "Mithuna", "Karka", "Simha", "Kanya",
+             "Tula", "Vrischika", "Dhanu", "Makara", "Kumbha", "Meena"]
+    return names[idx], idx + 1, deg_into
+# ----------------------------------
 
 def masa_from_sidereal(sun_sid: float):
     """Approximate lunar month name from sidereal sun (Amanta-style approx)."""
@@ -179,7 +189,8 @@ if submit:
     # derive panchang elements
     tnum, tname, paksha, tangle = tithi_from_sidereal(sun_sid, moon_sid)
     nak_name, nak_idx, nak_deg, nak_pada = nakshatra_from_sidereal(moon_sid)
-    rashi_name, rashi_idx, rashi_deg = rashi_from_sidereal(moon_sid)
+    rashi_name, rashi_idx, rashi_deg = rashi_from_sidereal(moon_sid) # Moon Rashi
+    sun_rashi_name, sun_rashi_idx, sun_rashi_deg = rashi_from_sidereal_sun(sun_sid) # --- NEW: Sun Rashi ---
     masa_name = masa_from_sidereal(sun_sid)
     weekday = local_dt.strftime("%A")
 
@@ -198,16 +209,21 @@ if submit:
     c2.metric(label="Rashi (Moon sign)", value=f"{rashi_name}", delta=f"{rashi_deg:.2f}° into sign")
     c3.metric(label="Nakshatra", value=f"{nak_name}", delta=f"Pada {nak_pada}")
 
-    # second row: masa, weekday, next solar
+    # second row: masa, weekday, sun sign, next solar
     c4, c5, c6 = st.columns(3)
     c4.metric(label="Masa (approx.)", value=masa_name)
     c5.metric(label="Weekday", value=weekday)
-    # solar birthday next year
+    c6.metric(label="Rashi (Sun sign)", value=f"{sun_rashi_name}", delta=f"{sun_rashi_deg:.2f}° into sign") # --- NEW METRIC ---
+    
+    # solar birthday next year - put this below for a cleaner layout
+    st.markdown("---")
+    st.subheader("Next Significant Dates")
+    c7, c8 = st.columns(2)
     try:
         solar_next = local_dt.replace(year=local_dt.year + 1).date()
     except Exception:
         solar_next = date(local_dt.year + 1, 1, 1)
-    c6.metric(label="Solar birthday (next year)", value=str(solar_next))
+    c7.metric(label="Solar birthday (next year)", value=str(solar_next))
 
     # diagnostics & raw numbers
     with st.expander("Diagnostics & Raw numbers (click to open)"):
@@ -216,7 +232,8 @@ if submit:
         st.write(f"Moon (sidereal): {moon_sid:.6f}°")
         st.write(f"Tithi angle (Moon - Sun): {tangle:.6f}°")
         st.write(f"Nakshatra #{nak_idx} — {nak_deg:.6f}° into nakshatra")
-        st.write(f"Rashi idx: {rashi_idx} (1..12), {rashi_deg:.6f}° into rashi")
+        st.write(f"Moon Rashi idx: {rashi_idx} (1..12), {rashi_deg:.6f}° into rashi")
+        st.write(f"**Sun Rashi idx**: {sun_rashi_idx} (1..12), **{sun_rashi_deg:.6f}°** into rashi") # --- NEW DIAGNOSTIC ---
         st.write("Coordinates used:", f"{lat:.6f}°N, {lon:.6f}°E")
         st.write("Local timezone:", tz_name)
 
@@ -256,8 +273,8 @@ if submit:
 
         next_vedic = find_next_vedic(local_dt)
 
-    st.markdown("### 📅 Next Vedic birthday (matching all elements)")
-    st.write(f"**{next_vedic}**")
+    c8.metric(label="Next Vedic birthday (Tithi+Nak+Rashi)", value=str(next_vedic))
+
 
     # Save to Supabase (optional)
     if supabase:
@@ -276,6 +293,7 @@ if submit:
                 "vedic_nakshatra_pada": nak_pada,
                 "vedic_masa": masa_name,
                 "vedic_rashi": rashi_name,
+                "vedic_sun_rashi": sun_rashi_name, # --- NEW FIELD ---
                 "solar_birthday_next_year": solar_next.isoformat(),
                 "next_vedic_dob": str(next_vedic)
             }).execute()
